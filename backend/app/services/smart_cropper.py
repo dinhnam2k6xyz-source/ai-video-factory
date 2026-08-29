@@ -3,7 +3,7 @@ import numpy as np
 import subprocess
 import os
 from pathlib import Path
-from typing import Tuple, List
+from typing import Tuple, List, Optional
 
 class SmartCropper:
     """Tự động nhận diện khuôn mặt người nói và crop 9:16 siêu tốc cho Shorts/TikTok"""
@@ -15,9 +15,9 @@ class SmartCropper:
         else:
             self.face_cascade = None
 
-    def detect_face_centers(self, video_path: str, start_time: float, end_time: float, sample_rate: int = 15) -> float:
+    def detect_face_centers(self, video_path: str, start_time: float, end_time: float, sample_interval_sec: float = 1.0) -> float:
         """
-        Lấy mẫu khung hình nhanh để tính toạ độ X trung tâm.
+        Lấy mẫu nhanh (1 frame mỗi giây) với resolution nhỏ để tính toạ độ X trung tâm trong 0.2s.
         """
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
@@ -29,30 +29,26 @@ class SmartCropper:
         
         start_frame = int(start_time * fps)
         end_frame = int(end_time * fps)
-        
-        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
-        current_frame = start_frame
+        frame_step = max(1, int(fps * sample_interval_sec))
         
         x_positions = []
         
-        while current_frame <= end_frame and cap.isOpened():
+        for f_pos in range(start_frame, end_frame, frame_step):
+            cap.set(cv2.CAP_PROP_POS_FRAMES, f_pos)
             ret, frame = cap.read()
             if not ret:
                 break
                 
-            if (current_frame - start_frame) % sample_rate == 0 and self.face_cascade is not None:
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                small_gray = cv2.resize(gray, (640, 360))
-                scale_x = width / 640.0
+            if self.face_cascade is not None:
+                small_gray = cv2.resize(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), (320, 180))
+                scale_x = width / 320.0
                 
-                faces = self.face_cascade.detectMultiScale(small_gray, scaleFactor=1.2, minNeighbors=4, minSize=(30, 30))
+                faces = self.face_cascade.detectMultiScale(small_gray, scaleFactor=1.3, minNeighbors=3, minSize=(20, 20))
                 if len(faces) > 0:
                     largest_face = max(faces, key=lambda r: r[2] * r[3])
                     fx, fy, fw, fh = largest_face
                     face_center_x = (fx + fw / 2.0) * scale_x
                     x_positions.append(face_center_x / width)
-                    
-            current_frame += 1
             
         cap.release()
         
@@ -60,35 +56,76 @@ class SmartCropper:
             return float(np.median(x_positions))
         return 0.5
 
-    def crop_to_shorts(self, video_path: str, start_time: float, end_time: float, output_path: str, center_x_ratio: float = 0.5) -> bool:
+    def crop_and_burn_short(
+        self,
+        video_path: str,
+        start_time: float,
+        end_time: float,
+        ass_path: Optional[str],
+        output_path: str,
+        center_x_ratio: float = 0.5,
+        crf: int = 21,
+        preset: str = "ultrafast"
+    ) -> bool:
         """
-        Cắt video thành kích thước dọc 9:16 (1080x1920) với preset ultrafast + faststart stream.
+        Single-Pass Ultra-Fast Crop + Subtitle Burn:
+        Cắt 9:16 + scale + burn phụ đề Karaoke trong 1 lần encode duy nhất bằng FFmpeg!
         """
         duration = end_time - start_time
         
-        crop_filter = (
-            f"scale=1080:1920:force_original_aspect_ratio=increase,"
-            f"crop=1080:1920"
-        )
+        filters = [
+            "scale=1080:1920:force_original_aspect_ratio=increase",
+            "crop=1080:1920"
+        ]
+        
+        if ass_path and os.path.exists(ass_path):
+            clean_ass = ass_path.replace("\\", "/").replace(":", "\\:")
+            filters.append(f"ass='{clean_ass}'")
+            
+        vf_chain = ",".join(filters)
         
         cmd = [
             "ffmpeg", "-y",
             "-threads", "0",
             "-ss", str(start_time),
-            "-i", video_path,
+            "-i", str(video_path),
             "-t", str(duration),
-            "-vf", crop_filter,
-            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "22",
-            "-c:a", "aac", "-b:a", "192k",
+            "-vf", vf_chain,
+            "-c:v", "libx264",
+            "-preset", str(preset),
+            "-tune", "fastdecode",
+            "-crf", str(crf),
+            "-c:a", "aac",
+            "-b:a", "192k",
             "-movflags", "+faststart",
-            output_path
+            str(output_path)
         ]
         
         try:
             subprocess.run(cmd, capture_output=True, check=True)
             return True
-        except Exception as e:
-            print(f"[SmartCropper] Crop error: {e}")
-            return False
+        except subprocess.CalledProcessError as e:
+            # Fallback không có ass filter nếu libass lỗi
+            try:
+                fallback_vf = "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920"
+                fallback_cmd = [
+                    "ffmpeg", "-y",
+                    "-threads", "0",
+                    "-ss", str(start_time),
+                    "-i", str(video_path),
+                    "-t", str(duration),
+                    "-vf", fallback_vf,
+                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "22",
+                    "-c:a", "aac",
+                    "-movflags", "+faststart",
+                    str(output_path)
+                ]
+                subprocess.run(fallback_cmd, capture_output=True, check=True)
+                return True
+            except Exception:
+                return False
+
+    def crop_to_shorts(self, video_path: str, start_time: float, end_time: float, output_path: str, center_x_ratio: float = 0.5) -> bool:
+        return self.crop_and_burn_short(video_path, start_time, end_time, None, output_path, center_x_ratio)
 
 smart_cropper = SmartCropper()

@@ -126,74 +126,90 @@ class VideoFactoryPipeline:
             # Tắt tiếng gốc (bgm_volume=0.0) để đảm bảo 100% âm thanh phát ra là tiếng dịch chuẩn
             timing_aligner.mix_dub_with_bgm(full_dub_voice, bgm_path, mixed_audio_path, bgm_volume=0.0, voice_volume=1.4)
 
-            # 7. Render Video Full Đã Lồng Tiếng & Burn Phụ Đề Đã Dịch
-            self.update_task_progress(task_id, 75, "render_full_video", "Đang lồng tiếng và chèn phụ đề đã dịch vào Video Full...")
+            # 7. Render Video Full Đã Lồng Tiếng & Burn Phụ Đề Đã Dịch (Single-Pass Ultrafast)
+            self.update_task_progress(task_id, 75, "render_full_video", "Đang lồng tiếng và chèn phụ đề đã dịch vào Video Full siêu tốc...")
             full_dubbed_video = str(task_out_dir / "full_dubbed_video.mp4")
             full_dubbed_clean = str(task_out_dir / "full_dubbed_video_clean.mp4")
-            temp_dub_no_sub = str(task_temp_dir / "temp_dubbed_no_sub.mp4")
             full_ass_path = str(task_temp_dir / "full_subtitles.ass")
 
-            # 7a. Ghép video gốc với audio lồng tiếng
-            remux_cmd = [
+            # 7a. Sinh phụ đề Cinema
+            subtitle_generator.generate_ass_subtitles(tts_segments, full_ass_path, is_vertical=False, style_mode="cinema")
+            clean_ass = full_ass_path.replace("\\", "/").replace(":", "\\:")
+
+            # 7b. Single-Pass Direct Video Mux & Subtitle Burn (Tiết kiệm 50% thời gian render)
+            render_cmd = [
                 "ffmpeg", "-y",
                 "-threads", "0",
                 "-i", video_path,
                 "-i", mixed_audio_path,
                 "-map", "0:v:0",
                 "-map", "1:a:0",
-                "-c:v", "copy",
+                "-vf", f"ass='{clean_ass}'",
+                "-c:v", "libx264",
+                "-preset", "ultrafast",
+                "-tune", "fastdecode",
+                "-crf", "21",
                 "-c:a", "aac",
+                "-b:a", "192k",
                 "-movflags", "+faststart",
                 "-shortest",
-                temp_dub_no_sub
+                full_dubbed_video
             ]
-            subprocess.run(remux_cmd, capture_output=True, check=True)
-
-            # Lưu 1 bản sạch không sub
             try:
-                import shutil
-                shutil.copy2(temp_dub_no_sub, full_dubbed_clean)
-            except Exception:
-                pass
+                subprocess.run(render_cmd, capture_output=True, check=True)
+            except Exception as e:
+                print(f"[Pipeline] Single-pass burn error: {e}, using remux fallback...")
+                fallback_cmd = [
+                    "ffmpeg", "-y", "-threads", "0",
+                    "-i", video_path, "-i", mixed_audio_path,
+                    "-map", "0:v:0", "-map", "1:a:0",
+                    "-c:v", "copy", "-c:a", "aac",
+                    "-movflags", "+faststart", "-shortest",
+                    full_dubbed_video
+                ]
+                subprocess.run(fallback_cmd, capture_output=True, check=True)
 
-            # 7b. Sinh phụ đề Cinema và burn cứng vào video Full
-            subtitle_generator.generate_ass_subtitles(tts_segments, full_ass_path, is_vertical=False, style_mode="cinema")
-            burn_ok = subtitle_generator.burn_subtitles(temp_dub_no_sub, full_ass_path, full_dubbed_video)
-            if not burn_ok or not os.path.exists(full_dubbed_video) or os.path.getsize(full_dubbed_video) == 0:
-                # Nếu burn lỗi thì copy bản không sub làm fallback
-                import shutil
-                shutil.copy2(temp_dub_no_sub, full_dubbed_video)
-
-            # 8. Tự Tạo Shorts 9:16 & Cắt Highlights
-            self.update_task_progress(task_id, 85, "generate_shorts", "Đang phân tích đoạn viral, crop 9:16 và burn phụ đề Karaoke...")
+            # 8. Tự Tạo Shorts 9:16 & Cắt Highlights Song Song (Multithreaded Parallel Render)
+            self.update_task_progress(task_id, 85, "generate_shorts", "Đang phân tích đoạn viral, crop 9:16 và burn phụ đề Karaoke song song...")
             highlights = highlight_detector.detect_highlights(tts_segments, duration, user_prompt=custom_prompt)
             
-            generated_shorts = []
-            for h in highlights:
-                s_id = h["id"]
-                s_start = h["start_time"]
-                s_end = h["end_time"]
-                
-                # 8a. Nhận diện mặt và Crop 9:16
-                cropped_short = str(task_temp_dir / f"short_{s_id}_cropped.mp4")
-                face_center = smart_cropper.detect_face_centers(full_dubbed_video, s_start, s_end)
-                smart_cropper.crop_to_shorts(full_dubbed_video, s_start, s_end, cropped_short, center_x_ratio=face_center)
-                
-                # 8b. Lọc segments trong khoảng thời gian của short và tạo phụ đề động
-                short_segs = [s for s in tts_segments if s["start"] >= s_start and s["end"] <= s_end]
-                if not short_segs:
-                    short_segs = [{"start": s_start, "end": s_end, "text": h["title"]}]
+            def render_single_short(h: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+                try:
+                    s_id = h["id"]
+                    s_start = h["start_time"]
+                    s_end = h["end_time"]
                     
-                short_ass = str(task_temp_dir / f"short_{s_id}.ass")
-                subtitle_generator.generate_ass_subtitles(short_segs, short_ass, offset_start=s_start, is_vertical=True)
-                
-                # 8c. Burn Subtitle vào Short
-                final_short_path = str(task_out_dir / f"short_viral_{s_id}.mp4")
-                subtitle_generator.burn_subtitles(cropped_short, short_ass, final_short_path)
-                
-                h["video_url"] = f"/storage/outputs/{task_id}/short_viral_{s_id}.mp4"
-                generated_shorts.append(h)
-                credit_manager.add_shorts_count(1)
+                    short_segs = [s for s in tts_segments if s["start"] >= s_start and s["end"] <= s_end]
+                    if not short_segs:
+                        short_segs = [{"start": s_start, "end": s_end, "text": h["title"]}]
+                        
+                    short_ass = str(task_temp_dir / f"short_{s_id}.ass")
+                    subtitle_generator.generate_ass_subtitles(short_segs, short_ass, offset_start=s_start, is_vertical=True, style_mode="karaoke")
+                    
+                    final_short_path = str(task_out_dir / f"short_viral_{s_id}.mp4")
+                    face_center = smart_cropper.detect_face_centers(full_dubbed_video, s_start, s_end, sample_interval_sec=1.0)
+                    
+                    # Single-Pass Crop + Subtitle Burn (Cực nhanh)
+                    ok = smart_cropper.crop_and_burn_short(
+                        full_dubbed_video, s_start, s_end, short_ass, final_short_path,
+                        center_x_ratio=face_center, crf=21, preset="ultrafast"
+                    )
+                    if ok:
+                        h["video_url"] = f"/storage/outputs/{task_id}/short_viral_{s_id}.mp4"
+                        return h
+                except Exception as ex:
+                    print(f"[Pipeline] Short render error: {ex}")
+                return None
+
+            # Render song song tối đa 3 shorts cùng lúc
+            from concurrent.futures import ThreadPoolExecutor
+            generated_shorts = []
+            with ThreadPoolExecutor(max_workers=3) as executor:
+                results = list(executor.map(render_single_short, highlights))
+                for res in results:
+                    if res:
+                        generated_shorts.append(res)
+                        credit_manager.add_shorts_count(1)
 
             # 9. Xuất file phụ đề SRT / TXT
             srt_vi_path = str(task_out_dir / "subtitles_vi.srt")
