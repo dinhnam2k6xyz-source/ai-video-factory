@@ -281,3 +281,5 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             f.write("\n".join(lines))
 
         return output_txt_path
+
+subtitle_generator = SubtitleGenerator()
