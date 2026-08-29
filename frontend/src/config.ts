@@ -8,14 +8,20 @@ export const getApiBaseUrl = (): string => {
       hostname === '0.0.0.0' ||
       hostname.startsWith('192.168.');
 
-    // Nếu đang mở trên máy tính (localhost), luôn dùng relative endpoint để gọi trực tiếp Backend local
+    // Nếu đang chạy trên máy tính (localhost), LUÔN LUÔN dùng relative endpoint ''
     if (isLocalhost) {
       return '';
     }
 
-    // Nếu đang mở trên Vercel / Cloud, kiểm tra xem người dùng đã cấu hình URL Backend chưa
     const saved = localStorage.getItem('CUSTOM_API_BASE_URL');
-    if (saved && saved.trim()) return saved.trim();
+    if (saved) {
+      // Tự động dọn sạch các URL trycloudflare tạm thời đã hết hạn
+      if (saved.includes('trycloudflare.com')) {
+        localStorage.removeItem('CUSTOM_API_BASE_URL');
+      } else if (saved.trim()) {
+        return saved.trim();
+      }
+    }
   }
   return (import.meta as any).env?.VITE_API_BASE_URL || '';
 };
