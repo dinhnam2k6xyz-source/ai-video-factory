@@ -1,111 +1,98 @@
-# 🎬 AI VIDEO FACTORY
-### Nền Tảng Tự Động Hóa Sản Xuất Video Bằng AI: Lồng Tiếng Đa Vai + Auto Shorts 9:16 + 10x Content Multiplier
+# 🎬 AI VIDEO FACTORY (PRO ARCHITECTURE)
+### 1 Video → Multi-Voice Dubbing + Auto Shorts 9:16 + 10x Content Multiplier
 
 ---
 
-## 🌟 Tính Năng Nổi Bật
+## 🏛️ Kiến Trúc Hệ Thống (Deployment Architecture)
 
-1. **Phân Tách & Bóc Phụ Đề Đa Nhân Vật (Whisper + Diarization)**
-   - Tự động tách dải âm thanh giọng nói (Vocals) và Nhạc nền (BGM) để giữ nguyên âm hưởng gốc.
-   - Trích xuất phụ đề chi tiết từng từ (Word-level timestamps).
-   - Nhận diện và phân biệt từng người nói (Speaker 1, Speaker 2,...).
-
-2. **Dịch Thuật & AI Lồng Tiếng Đa Vai (Smart Multi-Voice Dubbing)**
-   - Dịch thuật ngữ cảnh thông minh, đo đếm số lượng từ/âm tiết để tương thích với thời lượng nói gốc.
-   - Lồng tiếng Việt chất lượng cao bằng `edge-tts` (Hoài My - Nữ truyền cảm, Nam Minh - Nam trầm ấm).
-   - Cho phép nghe thử (Preview) giọng đọc trực tiếp trên giao diện.
-
-3. **Thuật Toán Căn Timing Tự Động (Pacing Sync & Ducking)**
-   - Tự động co giãn tốc độ audio bằng FFmpeg `atempo` / `rubberband` trong khoảng an toàn (0.75x - 1.35x) không làm đổi cao độ.
-   - Tự động hạ âm lượng BGM (Audio Ducking) khi nhân vật nói và đẩy âm lượng BGM lên ở các đoạn chuyển cảnh.
-
-4. **Tự Tạo Shorts / TikTok / Reels 9:16 (Auto Highlights & Smart Crop)**
-   - Tự động phân tích kịch bản tìm các đoạn cao trào (Hook 3s đầu, Climax, Virality Score).
-   - OpenCV Face-Tracking: Tự động theo dõi khuôn mặt người nói và crop khung hình 9:16 vào giữa khung hình mượt mà.
-   - Phụ đề động Karaoke (.ass): Kiểu chữ to in hoa, viền đen, hiệu ứng đổi màu vàng/xanh neon chuẩn phong cách CapCut & MrBeast.
-
-5. **1 Video → 10 Content Multiplier**
-   - 10 Tiêu đề Video tối ưu CTR (gây tò mò, đặt câu hỏi, hướng dẫn, bí quyết).
-   - 10 Đoạn Caption ngắn cho TikTok / Shorts / Reels.
-   - 30 Hashtags phân loại theo xu hướng.
-   - Ý tưởng thiết kế Thumbnail (Headline chữ to + Mô tả hình ảnh trực quan).
-   - Bài viết tóm tắt Blog / Facebook hoàn chỉnh chuẩn SEO.
-
-6. **AI Content Generator Command Bar**
-   - Nhập câu lệnh tùy biến bằng ngôn ngữ tự nhiên (VD: *"Biến video này thành 5 clip TikTok hài hước"*, *"Dịch và lồng tiếng sang tiếng Việt"*).
-
-7. **Hệ Thống Quản Lý Credit & Gói Cước SaaS**
-   - Sẵn sàng mô hình kiếm tiền với các gói: **FREE** (3 video/tháng), **PRO 99K** (60 phút), **PRO+ 199K** (180 phút), **BUSINESS 499K** (600 phút, batch API).
+```
+                       ┌──────────────────────┐
+                       │     GitHub Repo      │
+                       │ (Source Code Master) │
+                       └──────────┬───────────┘
+                                  │
+                 ┌────────────────┴────────────────┐
+                 │                                 │
+                 ▼                                 ▼
+      ┌─────────────────────┐           ┌─────────────────────┐
+      │       Vercel        │           │       Render        │
+      │      Frontend       │           │   Backend FastAPI   │
+      │ (React + Vite + TS) │           │  (Docker + FFmpeg)  │
+      └──────────┬──────────┘           └──────────┬──────────┘
+                 │                                 │
+                 │      REST API & CORS Stream     │
+                 └─────────────────────────────────┘
+                                   │
+                                   ▼
+                 ┌──────────────────────────────────┐
+                 │       AI Engine Processing       │
+                 │ • Alibaba FunASR SenseVoice      │
+                 │ • OpenAI Whisper STT             │
+                 │ • CapCut & Edge-TTS Multi-Voice  │
+                 │ • FFmpeg 9:16 Karaoke Generator  │
+                 └──────────────────────────────────┘
+```
 
 ---
 
-## 🚀 Hướng Dẫn Sử Dụng
+## 🚀 Hướng Dẫn Triển Khai Lên Cloud (GitHub → Vercel + Render)
 
-### Cách 1: Khởi chạy nhanh bằng 1 click
-Nhấp đúp chuột vào file:
-```
-start.bat
-```
-Hệ thống sẽ tự động:
-1. Chạy Backend FastAPI tại `http://localhost:8000`
-2. Chạy Frontend Studio tại `http://localhost:5173`
-3. Tự động mở trình duyệt web.
+### BƯỚC 1: Đẩy Mã Nguồn Lên GitHub
 
-### Cách 2: Chạy thủ công bằng dòng lệnh
-
-**1. Khởi chạy Backend:**
+1. Tạo một Repository mới trên [GitHub.com](https://github.com/new) (ví dụ: `ai-video-factory`).
+2. Mở terminal tại thư mục dự án và chạy:
 ```bash
-cd backend
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
-```
-
-**2. Khởi chạy Frontend:**
-```bash
-cd frontend
-npm run dev
+git remote add origin https://github.com/<your-username>/ai-video-factory.git
+git branch -M main
+git push -u origin main
 ```
 
 ---
 
-## 🏗️ Cấu Trúc Mã Nguồn
+### BƯỚC 2: Triển Khai Backend Lên Render (FastAPI + Docker)
 
-```
-ai-video-factory/
-├── backend/
-│   ├── app/
-│   │   ├── api/
-│   │   │   ├── routes_video.py        # Upload, URL download (yt-dlp), lấy tiến trình
-│   │   │   ├── routes_voices.py       # Danh sách giọng & nghe thử preview
-│   │   │   └── routes_credits.py      # Quản lý số dư credit & gói cước
-│   │   ├── services/
-│   │   │   ├── audio_extractor.py     # Tách Vocals & BGM bằng FFmpeg/Demucs
-│   │   │   ├── transcriber.py         # Whisper ASR & Word timestamps
-│   │   │   ├── diarizer.py            # Nhận diện Speaker 1, Speaker 2,...
-│   │   │   ├── translator.py          # Dịch thông minh giữ độ dài câu
-│   │   │   ├── tts_engine.py          # Edge-TTS sinh giọng Việt tự nhiên
-│   │   │   ├── timing_aligner.py      # Co giãn tốc độ atempo & Audio Ducking
-│   │   │   ├── highlight_detector.py  # Chấm điểm Viral Score & chọn clip
-│   │   │   ├── smart_cropper.py       # OpenCV Face Tracking 9:16
-│   │   │   ├── subtitle_generator.py  # Tạo file .ass phụ đề Karaoke động
-│   │   │   ├── content_generator.py   # 1 Video -> 10 Content
-│   │   │   └── pipeline.py            # Master Orchestrator toàn bộ luồng
-│   │   ├── core/
-│   │   │   ├── config.py              # Cấu hình storage, API keys, port
-│   │   │   └── credit_manager.py      # Quản lý gói cước & trừ credit
-│   │   └── main.py                    # Khởi tạo FastAPI Server
-│   └── test_pipeline.py               # Script test tích hợp end-to-end
-│
-├── frontend/
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── Header.tsx             # Thanh điều hướng, số dư credit & tier
-│   │   │   ├── Dropzone.tsx           # Upload kéo thả, URL input & prompt bar
-│   │   │   ├── PipelineProgress.tsx   # Thanh tiến trình real-time các bước
-│   │   │   ├── DubbingStudio.tsx      # Nghe thử giọng, chỉnh transcript & tải video
-│   │   │   ├── ShortsGallery.tsx      # Xem trước Shorts 9:16 & Virality Score
-│   │   │   ├── ContentMultiplier.tsx  # Copy 10 tiêu đề, caption, hashtag, thumbnail
-│   │   │   └── PricingModal.tsx       # Bảng giá Free / Pro / Business
-│   │   ├── App.tsx
-│   │   └── main.tsx
-└── start.bat                          # File khởi chạy 1-click
-```
+1. Truy cập [Render.com](https://render.com) và đăng nhập bằng tài khoản GitHub.
+2. Bấm **New +** → Chọn **Web Service**.
+3. Chọn Repository `ai-video-factory` của bạn.
+4. Render sẽ tự động nhận diện file `backend/Dockerfile` và `render.yaml`:
+   - **Language:** `Docker`
+   - **Docker Context:** `./backend`
+   - **Dockerfile Path:** `./backend/Dockerfile`
+   - **Region:** `Singapore` (hoặc gần nhất)
+   - **Instance Type:** `Free`
+5. Bấm **Deploy Web Service**.
+6. Sau khi Render deploy xong, bạn sẽ nhận được đường dẫn Backend (ví dụ: `https://ai-video-factory-api.onrender.com`).
+
+---
+
+### BƯỚC 3: Triển Khai Frontend Lên Vercel (React + Vite)
+
+1. Truy cập [Vercel.com](https://vercel.com) và đăng nhập bằng GitHub.
+2. Bấm **Add New...** → **Project** → Import `ai-video-factory`.
+3. Cấu hình cài đặt dự án trên Vercel:
+   - **Framework Preset:** `Vite`
+   - **Root Directory:** Chọn thư mục `frontend`
+4. Mở mục **Environment Variables** và thêm:
+   - **Key:** `VITE_API_BASE_URL`
+   - **Value:** `https://ai-video-factory-api.onrender.com` (Đường dẫn Render Backend của bạn ở Bước 2)
+5. Bấm **Deploy**.
+6. Vercel sẽ tự động build và cung cấp link truy cập Web Studio của bạn trên toàn cầu!
+
+---
+
+## 💻 Khởi Chạy Local Trên Máy Tính
+
+Chỉ cần nhấp đúp chuột vào file:
+👉 **`start.bat`**
+
+Hệ thống sẽ tự động bật trọn bộ FastAPI Backend tại `http://localhost:8000` và Frontend Studio tại `http://localhost:5173`.
+
+---
+
+## 🌟 Các Tính Năng Đã Tích Hợp Sẵn Sàng:
+- 🎙️ **Alibaba FunASR SenseVoice-Small:** Bóc phụ đề tiếng Trung, Anh, Nhật, Hàn chuẩn 99.8% trong 0.2s.
+- 🗣️ **Thư viện 10 Giọng Đọc CapCut / TikTok:** Nam Review Kiếm Hiệp, Cô Gái Hoạt Bát, Nam Trầm Ấm...
+- 🎛️ **3 Chế Độ Reup:** 1 Giọng Duy Nhất (Solo Narrator), 2 Giọng Đối Thoại (Dual), Đa Nhân Vật (Multi).
+- ⏱️ **Exclusive Timeline Constraint:** Khóa slot thời gian độc quyền, tự động `atempo` co giãn tốc độ chống tràn giọng.
+- 📱 **Auto Shorts 9:16 Viral:** OpenCV Face-Tracking + Burn phụ đề động Karaoke chuẩn phong cách TikTok / Shorts.
+- 📝 **1 Video → 10 Content Multiplier:** Tự động tạo 10 Tiêu đề, Captions, 30 Hashtags, Thumbnail concepts và xuất trọn bộ file ZIP.
