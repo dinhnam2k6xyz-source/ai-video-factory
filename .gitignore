@@ -1,3 +1,7 @@
+# Executables & Binaries
+*.exe
+cloudflared*
+
 # Python
 __pycache__/
 *.py[cod]

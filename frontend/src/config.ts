@@ -1,12 +1,23 @@
-// Cấu hình URL API Backend Cloudflare Live (Hoạt động 100% trên Điện thoại & Web Vercel)
-export const DEFAULT_CLOUD_BACKEND = 'https://pension-efficient-innovations-sticky.trycloudflare.com';
-
+// Cấu hình URL API Backend (Tự động chuyển đổi giữa Localhost và Cloud)
 export const getApiBaseUrl = (): string => {
   if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+    const isLocalhost = 
+      hostname === 'localhost' || 
+      hostname === '127.0.0.1' || 
+      hostname === '0.0.0.0' ||
+      hostname.startsWith('192.168.');
+
+    // Nếu đang mở trên máy tính (localhost), luôn dùng relative endpoint để gọi trực tiếp Backend local
+    if (isLocalhost) {
+      return '';
+    }
+
+    // Nếu đang mở trên Vercel / Cloud, kiểm tra xem người dùng đã cấu hình URL Backend chưa
     const saved = localStorage.getItem('CUSTOM_API_BASE_URL');
     if (saved && saved.trim()) return saved.trim();
   }
-  return (import.meta as any).env?.VITE_API_BASE_URL || DEFAULT_CLOUD_BACKEND;
+  return (import.meta as any).env?.VITE_API_BASE_URL || '';
 };
 
 export const setApiBaseUrl = (url: string) => {
