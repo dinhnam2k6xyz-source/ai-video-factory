@@ -179,16 +179,39 @@ class VideoFactoryPipeline:
                 generated_shorts.append(h)
                 credit_manager.add_shorts_count(1)
 
-            # 9. Tạo 1 Video -> 10 Content Multiplier
+            # 9. Xuất file phụ đề SRT / TXT
+            srt_vi_path = str(task_out_dir / "subtitles_vi.srt")
+            srt_orig_path = str(task_out_dir / "subtitles_original.srt")
+            srt_bilingual_path = str(task_out_dir / "subtitles_bilingual.srt")
+            txt_vi_path = str(task_out_dir / "transcript_vi.txt")
+            txt_orig_path = str(task_out_dir / "transcript_original.txt")
+
+            subtitle_generator.generate_srt(tts_segments, srt_vi_path, mode="translated")
+            subtitle_generator.generate_srt(tts_segments, srt_orig_path, mode="original")
+            subtitle_generator.generate_srt(tts_segments, srt_bilingual_path, mode="bilingual")
+            subtitle_generator.generate_txt(tts_segments, txt_vi_path, mode="translated")
+            subtitle_generator.generate_txt(tts_segments, txt_orig_path, mode="original")
+
+            # 10. Tạo 1 Video -> 10 Content Multiplier
             self.update_task_progress(task_id, 95, "content_generation", "Đang sinh trọn bộ 10 Tiêu đề, Captions, 30 Hashtags, Thumbnail concept...")
             content_pack = content_generator.generate_10x_content(tts_segments, custom_prompt=custom_prompt)
 
-            # 10. Đóng gói ZIP tải về
+            # 11. Đóng gói ZIP tải về
             zip_filename = f"ai_video_factory_{task_id}.zip"
             zip_path = task_out_dir / zip_filename
             with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
                 if os.path.exists(full_dubbed_video):
                     zipf.write(full_dubbed_video, arcname="full_dubbed_video.mp4")
+                if os.path.exists(srt_vi_path):
+                    zipf.write(srt_vi_path, arcname="subtitles/subtitles_vi.srt")
+                if os.path.exists(srt_orig_path):
+                    zipf.write(srt_orig_path, arcname="subtitles/subtitles_original.srt")
+                if os.path.exists(srt_bilingual_path):
+                    zipf.write(srt_bilingual_path, arcname="subtitles/subtitles_bilingual.srt")
+                if os.path.exists(txt_vi_path):
+                    zipf.write(txt_vi_path, arcname="subtitles/transcript_vi.txt")
+                if os.path.exists(txt_orig_path):
+                    zipf.write(txt_orig_path, arcname="subtitles/transcript_original.txt")
                 for s in generated_shorts:
                     s_file = task_out_dir / f"short_viral_{s['id']}.mp4"
                     if s_file.exists():
@@ -204,6 +227,13 @@ class VideoFactoryPipeline:
                 "speakers": speaker_profiles,
                 "segments": tts_segments,
                 "full_video_url": f"/storage/outputs/{task_id}/full_dubbed_video.mp4",
+                "subtitles": {
+                    "srt_vi": f"/storage/outputs/{task_id}/subtitles_vi.srt",
+                    "srt_orig": f"/storage/outputs/{task_id}/subtitles_original.srt",
+                    "srt_bilingual": f"/storage/outputs/{task_id}/subtitles_bilingual.srt",
+                    "txt_vi": f"/storage/outputs/{task_id}/transcript_vi.txt",
+                    "txt_orig": f"/storage/outputs/{task_id}/transcript_original.txt"
+                },
                 "shorts": generated_shorts,
                 "content_pack": content_pack,
                 "zip_download_url": f"/storage/outputs/{task_id}/{zip_filename}"

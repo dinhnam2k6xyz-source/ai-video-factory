@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Pause, Volume2, Download, User, Mic, Sparkles, Check, RefreshCw, Wand2 } from 'lucide-react';
+import { Play, Pause, Volume2, Download, User, Mic, Sparkles, Check, RefreshCw, Wand2, FileText, Globe, Layers } from 'lucide-react';
 import { TaskData, SpeakerProfile } from '../types';
 import { getApiUrl, getStorageUrl } from '../config';
 
@@ -96,6 +96,78 @@ export const DubbingStudio: React.FC<DubbingStudioProps> = ({ task }) => {
     }
   };
 
+  // Helper format thời gian chuẩn SRT: HH:MM:SS,mmm
+  const formatSrtTime = (seconds: number) => {
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+    let msecs = Math.round((seconds - Math.floor(seconds)) * 1000);
+    if (msecs >= 1000) msecs = 999;
+    return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')},${String(msecs).padStart(3, '0')}`;
+  };
+
+  // Tải xuống file SRT (Tiếng Việt / Gốc / Song Ngữ)
+  const handleDownloadSrt = (mode: 'vi' | 'orig' | 'bilingual') => {
+    let content = '';
+    let idx = 1;
+    segments.forEach((seg: any) => {
+      const start = Number(seg.start) || 0;
+      let end = Number(seg.end) || 0;
+      if (end <= start) end = start + 1.0;
+      const viText = (seg.translated_text || seg.text || '').trim();
+      const origText = (seg.original_text || seg.text || '').trim();
+      
+      let text = viText;
+      if (mode === 'orig') text = origText;
+      else if (mode === 'bilingual') text = `${viText}\n${origText}`;
+
+      if (text) {
+        content += `${idx}\n${formatSrtTime(start)} --> ${formatSrtTime(end)}\n${text}\n\n`;
+        idx++;
+      }
+    });
+
+    const filename = mode === 'vi' ? `phu_de_tieng_viet_${task.task_id}.srt` : mode === 'orig' ? `phu_de_goc_${task.task_id}.srt` : `phu_de_song_ngu_${task.task_id}.srt`;
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Tải xuống file TXT văn bản lời thoại
+  const handleDownloadTxt = (mode: 'vi' | 'orig' | 'bilingual') => {
+    let content = `AI VIDEO FACTORY - VĂN BẢN LỜI THOẠI & PHỤ ĐỀ\nTask ID: ${task.task_id}\nThời lượng: ${data.media_info?.duration?.toFixed(1) || 0}s\nTổng số câu: ${segments.length}\n${'='.repeat(50)}\n\n`;
+    segments.forEach((seg: any) => {
+      const start = Number(seg.start) || 0;
+      const mins = Math.floor(start / 60);
+      const secs = Math.floor(start % 60);
+      const timeTag = `[${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}]`;
+      const spk = seg.speaker || 'Speaker 1';
+      const viText = (seg.translated_text || seg.text || '').trim();
+      const origText = (seg.original_text || seg.text || '').trim();
+      
+      let text = viText;
+      if (mode === 'orig') text = origText;
+      else if (mode === 'bilingual') text = `${viText} (${origText})`;
+
+      if (text) {
+        content += `${timeTag} [${spk}]: ${text}\n\n`;
+      }
+    });
+
+    const filename = mode === 'vi' ? `loi_thoai_tieng_viet_${task.task_id}.txt` : mode === 'orig' ? `loi_thoai_goc_${task.task_id}.txt` : `loi_thoai_song_ngu_${task.task_id}.txt`;
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="space-y-8">
       {/* Top Banner: Video Player & Speaker Profiles */}
@@ -112,7 +184,7 @@ export const DubbingStudio: React.FC<DubbingStudioProps> = ({ task }) => {
               <a
                 href={fullVideoUrl}
                 download="full_dubbed_video.mp4"
-                className="flex items-center gap-1.5 text-xs bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 px-3 py-1.5 rounded-lg transition-colors"
+                className="flex items-center gap-1.5 text-xs bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 px-3 py-1.5 rounded-lg transition-colors font-semibold"
               >
                 <Download className="w-3.5 h-3.5" />
                 Tải Video Full (1080p)
@@ -159,23 +231,22 @@ export const DubbingStudio: React.FC<DubbingStudioProps> = ({ task }) => {
                     className="bg-slate-900/80 border border-slate-800 hover:border-purple-500/40 rounded-xl p-3.5 transition-all space-y-2.5"
                   >
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2.5">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs ${
-                          profile.gender === 'Female'
-                            ? 'bg-pink-500/20 text-pink-300 border border-pink-500/30'
-                            : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
-                        }`}>
-                          {profile.name.includes('1') ? '👨' : profile.name.includes('2') ? '👩' : '👤'}
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center font-bold text-white text-xs">
+                          {spkId.replace('SPEAKER_', 'S')}
                         </div>
                         <div>
-                          <div className="text-xs font-bold text-white">{profile.name} ({spkId})</div>
+                          <div className="text-xs font-bold text-white">{profile.name || spkId}</div>
+                          <div className="text-[10px] text-slate-400 font-mono">
+                            {profile.gender === 'male' ? 'Nam' : 'Nữ'} • {profile.accent || 'Miền Bắc'}
+                          </div>
                         </div>
                       </div>
 
+                      {/* Preview Button */}
                       <button
                         onClick={() => handlePreviewVoice(currentVoiceId)}
-                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-purple-600/30 text-slate-300 hover:text-purple-300 border border-slate-700 transition-colors flex items-center gap-1 text-[11px]"
-                        title="Nghe thử giọng"
+                        className="flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-purple-300 border border-slate-700 transition-colors"
                       >
                         {playingVoiceId === currentVoiceId ? (
                           <Pause className="w-3.5 h-3.5 text-purple-400 animate-pulse" />
@@ -239,6 +310,92 @@ export const DubbingStudio: React.FC<DubbingStudioProps> = ({ task }) => {
           </div>
         </div>
 
+      </div>
+
+      {/* 📥 Subtitle & Transcript Download Section */}
+      <div className="bg-[#111625] border border-purple-500/30 rounded-2xl p-5 shadow-xl space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-purple-500/20 text-purple-400">
+              <FileText className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                Tải Xuống Phụ Đề & Văn Bản Lời Thoại (SRT / TXT)
+              </h3>
+              <p className="text-xs text-slate-400">
+                Tương thích 100% với YouTube, CapCut, Adobe Premiere, DaVinci Resolve
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] bg-slate-900 border border-slate-700 text-slate-300 px-2.5 py-1 rounded-lg font-mono font-bold">
+              {segments.length} Câu thoại
+            </span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {/* SRT Vietnamese */}
+          <button
+            onClick={() => handleDownloadSrt('vi')}
+            className="flex items-center justify-between p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 hover:border-purple-500 hover:bg-purple-600/10 text-white transition-all group shadow-sm hover:scale-[1.02]"
+          >
+            <div className="flex items-center gap-2.5 text-left">
+              <span className="px-2 py-1 rounded-lg bg-purple-500/20 text-purple-400 font-black text-xs font-mono">SRT</span>
+              <div>
+                <div className="text-xs font-bold text-slate-200 group-hover:text-purple-300">Phụ Đề Tiếng Việt</div>
+                <div className="text-[10px] text-slate-400">Chuẩn .SRT có mốc giờ</div>
+              </div>
+            </div>
+            <Download className="w-4 h-4 text-slate-400 group-hover:text-purple-400" />
+          </button>
+
+          {/* SRT Original */}
+          <button
+            onClick={() => handleDownloadSrt('orig')}
+            className="flex items-center justify-between p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 hover:border-indigo-500 hover:bg-indigo-600/10 text-white transition-all group shadow-sm hover:scale-[1.02]"
+          >
+            <div className="flex items-center gap-2.5 text-left">
+              <span className="px-2 py-1 rounded-lg bg-indigo-500/20 text-indigo-400 font-black text-xs font-mono">SRT</span>
+              <div>
+                <div className="text-xs font-bold text-slate-200 group-hover:text-indigo-300">Phụ Đề Ngôn Ngữ Gốc</div>
+                <div className="text-[10px] text-slate-400">Tiếng Trung / Anh / Nhật</div>
+              </div>
+            </div>
+            <Download className="w-4 h-4 text-slate-400 group-hover:text-indigo-400" />
+          </button>
+
+          {/* SRT Bilingual */}
+          <button
+            onClick={() => handleDownloadSrt('bilingual')}
+            className="flex items-center justify-between p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 hover:border-emerald-500 hover:bg-emerald-600/10 text-white transition-all group shadow-sm hover:scale-[1.02]"
+          >
+            <div className="flex items-center gap-2.5 text-left">
+              <span className="px-2 py-1 rounded-lg bg-emerald-500/20 text-emerald-400 font-black text-xs font-mono">SRT</span>
+              <div>
+                <div className="text-xs font-bold text-slate-200 group-hover:text-emerald-300">Phụ Đề Song Ngữ</div>
+                <div className="text-[10px] text-slate-400">Việt + Gốc 2 dòng</div>
+              </div>
+            </div>
+            <Download className="w-4 h-4 text-slate-400 group-hover:text-emerald-400" />
+          </button>
+
+          {/* TXT Transcript */}
+          <button
+            onClick={() => handleDownloadTxt('vi')}
+            className="flex items-center justify-between p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 hover:border-amber-500 hover:bg-amber-600/10 text-white transition-all group shadow-sm hover:scale-[1.02]"
+          >
+            <div className="flex items-center gap-2.5 text-left">
+              <span className="px-2 py-1 rounded-lg bg-amber-500/20 text-amber-400 font-black text-xs font-mono">TXT</span>
+              <div>
+                <div className="text-xs font-bold text-slate-200 group-hover:text-amber-300">Văn Bản Lời Thoại</div>
+                <div className="text-[10px] text-slate-400">Kèm tên nhân vật & giờ</div>
+              </div>
+            </div>
+            <Download className="w-4 h-4 text-slate-400 group-hover:text-amber-400" />
+          </button>
+        </div>
       </div>
 
       {/* Bottom: Timeline Transcript & Subtitle Editor */}

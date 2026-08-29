@@ -6,6 +6,7 @@ export interface SpeakerProfile {
   voice_name: string;
   speed: number;
   pitch: string;
+  accent?: string;
 }
 
 export interface Segment {
@@ -14,6 +15,7 @@ export interface Segment {
   end: number;
   text: string;
   translated_text?: string;
+  original_text?: string;
   speaker: string;
   voice_id?: string;
   tts_audio_path?: string;
@@ -28,63 +30,59 @@ export interface ShortClip {
   duration: number;
   viral_score: number;
   hook: string;
-  reason: string;
+  reason?: string;
   video_url: string;
-}
-
-export interface ThumbnailConcept {
-  text: string;
-  visual_idea: string;
 }
 
 export interface ContentPack {
   titles: string[];
   captions: string[];
   hashtags: string[];
-  thumbnail_concepts: ThumbnailConcept[];
+  thumbnail_ideas?: any[];
+  thumbnail_concepts?: any[];
   blog_post: string;
-  key_takeaways: string[];
-  transcript?: string;
+  key_takeaways?: string[];
 }
 
 export interface TaskData {
   task_id: string;
-  status: 'init' | 'processing' | 'completed' | 'failed';
+  status: 'processing' | 'completed' | 'failed';
   progress: number;
   stage: string;
   message: string;
   data?: {
-    media_info?: { duration: number; width: number; height: number; fps: number };
+    media_info?: {
+      duration: number;
+      width: number;
+      height: number;
+    };
     speakers?: Record<string, SpeakerProfile>;
     segments?: Segment[];
     full_video_url?: string;
+    subtitles?: {
+      srt_vi?: string;
+      srt_orig?: string;
+      srt_bilingual?: string;
+      txt_vi?: string;
+      txt_orig?: string;
+    };
     shorts?: ShortClip[];
     content_pack?: ContentPack;
     zip_download_url?: string;
   };
 }
 
-export interface VoiceOption {
-  id: string;
-  name: string;
-  gender: string;
-}
-
-export interface TierInfo {
-  name: string;
-  price: string;
-  credits: number;
-  max_resolution: string;
-  watermark: boolean;
-  features: string[];
-}
-
 export interface UserCredits {
-  current_tier: string;
-  remaining_credits: number;
-  used_credits: number;
-  total_videos_processed: number;
-  total_shorts_generated: number;
-  tier_info: TierInfo;
-  all_tiers: Record<string, TierInfo>;
+  plan?: 'FREE' | 'PRO_99K' | 'PRO_199K' | 'BUSINESS_499K';
+  plan_name?: string;
+  price_vnd?: number;
+  minutes_used?: number;
+  minutes_total?: number;
+  minutes_remaining?: number;
+  videos_processed?: number;
+  shorts_created?: number;
+  features?: string[];
+  remaining_credits?: number;
+  current_tier?: string;
+  all_tiers?: any;
 }

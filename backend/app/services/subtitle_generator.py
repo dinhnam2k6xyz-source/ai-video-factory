@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import List, Dict, Any
 
 class SubtitleGenerator:
-    """Tạo phụ đề động Karaoke dạng TikTok/CapCut và burn vào video bằng FFmpeg siêu tốc"""
+    """Tạo phụ đề động Karaoke dạng TikTok/CapCut và xuất file phụ đề SRT / TXT / ASS"""
 
     def format_timestamp_ass(self, seconds: float) -> str:
         """Format timestamp cho file ASS: H:MM:SS.cs"""
@@ -14,6 +14,92 @@ class SubtitleGenerator:
         cs = int(round((seconds - int(seconds)) * 100))
         return f"{hrs}:{mins:02d}:{secs:02d}.{cs:02d}"
 
+    def format_timestamp_srt(self, seconds: float) -> str:
+        """Format timestamp cho file SRT: HH:MM:SS,mmm"""
+        hrs = int(seconds // 3600)
+        mins = int((seconds % 3600) // 60)
+        secs = int(seconds % 60)
+        msecs = int(round((seconds - int(seconds)) * 1000))
+        if msecs >= 1000:
+            msecs = 999
+        return f"{hrs:02d}:{mins:02d}:{secs:02d},{msecs:03d}"
+
+    def format_timestamp_txt(self, seconds: float) -> str:
+        """Format timestamp cho file TXT: [MM:SS]"""
+        mins = int(seconds // 60)
+        secs = int(seconds % 60)
+        return f"[{mins:02d}:{secs:02d}]"
+
+    def generate_srt(
+        self,
+        segments: List[Dict[str, Any]],
+        output_srt_path: str,
+        mode: str = "translated"  # "translated", "original", "bilingual"
+    ) -> str:
+        """Xuất file phụ đề chuẩn .SRT tương thích YouTube, Premiere, CapCut, DaVinci"""
+        lines = []
+        idx = 1
+
+        for seg in segments:
+            start = float(seg.get("start", 0))
+            end = float(seg.get("end", 0))
+            if end <= start:
+                end = start + 1.0
+
+            trans_text = (seg.get("translated_text") or seg.get("text", "")).strip()
+            orig_text = (seg.get("original_text") or seg.get("text", "")).strip()
+
+            if mode == "translated":
+                content = trans_text
+            elif mode == "original":
+                content = orig_text
+            else: # bilingual
+                content = f"{trans_text}\n{orig_text}"
+
+            if not content:
+                continue
+
+            lines.append(str(idx))
+            lines.append(f"{self.format_timestamp_srt(start)} --> {self.format_timestamp_srt(end)}")
+            lines.append(content)
+            lines.append("") # Empty line between entries
+            idx += 1
+
+        with open(output_srt_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+
+        return output_srt_path
+
+    def generate_txt(
+        self,
+        segments: List[Dict[str, Any]],
+        output_txt_path: str,
+        mode: str = "translated"
+    ) -> str:
+        """Xuất file văn bản lời thoại .TXT hoàn chỉnh"""
+        lines = []
+        for seg in segments:
+            start = float(seg.get("start", 0))
+            spk = seg.get("speaker", "Speaker 1")
+            
+            if mode == "translated":
+                text = (seg.get("translated_text") or seg.get("text", "")).strip()
+            elif mode == "original":
+                text = (seg.get("original_text") or seg.get("text", "")).strip()
+            else:
+                t1 = (seg.get("translated_text") or seg.get("text", "")).strip()
+                t2 = (seg.get("original_text") or seg.get("text", "")).strip()
+                text = f"{t1} ({t2})"
+
+            if text:
+                time_tag = self.format_timestamp_txt(start)
+                lines.append(f"{time_tag} [{spk}]: {text}")
+
+        with open(output_txt_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+
+        return output_txt_path
+
     def generate_ass_subtitles(
         self,
         segments: List[Dict[str, Any]],
@@ -21,10 +107,7 @@ class SubtitleGenerator:
         is_vertical: bool = True,
         offset_start: float = 0.0
     ) -> str:
-        """
-        Sinh file phụ đề .ass với style chữ vàng/trắng nổi bật, viền đen dày, chuẩn TikTok.
-        offset_start: Dịch chuyển mốc thời gian phụ đề về 0s cho các đoạn Shorts/Highlights.
-        """
+        """Sinh file phụ đề .ass với style chữ vàng/trắng nổi bật, viền đen dày, chuẩn TikTok"""
         font_size = 32 if is_vertical else 24
         margin_v = 180 if is_vertical else 50
         
@@ -56,7 +139,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             if not text:
                 continue
                 
-            # Chia nhỏ câu dài thành các cụm 4-5 từ để hiển thị đẹp mắt chuẩn Shorts
             words = text.split()
             if len(words) <= 5:
                 start_str = self.format_timestamp_ass(start)
@@ -98,8 +180,5 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             subprocess.run(cmd, capture_output=True, check=True)
             return True
         except Exception as e:
-            print(f"[SubtitleGenerator] Burn subtitle error: {e}")
-            subprocess.run(["ffmpeg", "-y", "-threads", "0", "-i", video_path, "-c", "copy", "-movflags", "+faststart", output_path], capture_output=True)
+            print(f"[SubtitleGenerator] Burn subtitles failed: {e}")
             return False
-
-subtitle_generator = SubtitleGenerator()
