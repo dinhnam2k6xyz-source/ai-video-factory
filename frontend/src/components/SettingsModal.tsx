@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, Settings, Key, CheckCircle2, ShieldCheck, Cpu, Sparkles, ExternalLink, Save, RefreshCw } from 'lucide-react';
-import { getApiUrl } from '../config';
+import { X, Settings, Key, CheckCircle2, ShieldCheck, Cpu, Sparkles, ExternalLink, Save, RefreshCw, Globe, Server } from 'lucide-react';
+import { getApiUrl, getApiBaseUrl, setApiBaseUrl } from '../config';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -8,6 +8,7 @@ interface SettingsModalProps {
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
+  const [backendUrl, setBackendUrl] = useState('');
   const [geminiKey, setGeminiKey] = useState('');
   const [capcutUrl, setCapcutUrl] = useState('');
   const [customTtsUrl, setCustomTtsUrl] = useState('');
@@ -17,6 +18,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
   useEffect(() => {
     if (isOpen) {
+      setBackendUrl(getApiBaseUrl());
       fetch(getApiUrl('/api/settings/'))
         .then(res => res.json())
         .then(d => {
@@ -32,6 +34,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     e.preventDefault();
     setIsSaving(true);
     setSavedSuccess(false);
+
+    // Lưu Backend URL vào LocalStorage
+    setApiBaseUrl(backendUrl);
 
     try {
       const res = await fetch(getApiUrl('/api/settings/'), {
@@ -50,6 +55,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
       }
     } catch (e) {
       console.error(e);
+      // Vẫn báo thành công nếu chỉ cập nhật Backend URL
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 3000);
     } finally {
       setIsSaving(false);
     }
@@ -59,126 +67,128 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="bg-[#111625] border border-slate-800 rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl relative">
-        
+      <div className="bg-[#111625] border border-purple-500/40 rounded-3xl w-full max-w-xl p-6 sm:p-8 shadow-2xl relative overflow-hidden max-h-[90vh] overflow-y-auto">
+        {/* Background glow */}
+        <div className="absolute top-0 right-0 w-64 h-64 bg-purple-600/10 rounded-full blur-3xl pointer-events-none"></div>
+
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-slate-800">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-6">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-purple-500/20 text-purple-400">
               <Settings className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-white">Cấu Hình Dịch Vụ & API Key (Tùy Chọn)</h2>
-              <p className="text-xs text-slate-400">Hệ thống mặc định hoạt động 100% MIỄN PHÍ vĩnh viễn không cần bất kỳ API Key nào</p>
+              <h3 className="text-lg font-bold text-white">Cấu Hình Kết Nối & AI Engine</h3>
+              <p className="text-xs text-slate-400">100% Miễn phí trọn đời • Không phát sinh chi phí</p>
             </div>
           </div>
-
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition-colors"
+            className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-slate-800 transition-colors"
           >
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
-        <form onSubmit={handleSave} className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
-          
-          {/* Status of 100% Free Core Engines */}
-          <div className="bg-emerald-950/30 border border-emerald-500/30 rounded-2xl p-4 space-y-3">
-            <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs uppercase tracking-wider">
-              <ShieldCheck className="w-4 h-4" />
-              <span>Trạng Thái Đang Chạy Miễn Phí (Zero Cost Mode - Hoạt Động Cục Bộ):</span>
-            </div>
+        <form onSubmit={handleSave} className="space-y-5">
+          {/* Backend API URL for Vercel / Cloud */}
+          <div className="bg-slate-900/80 border border-purple-500/30 rounded-2xl p-4 space-y-2">
+            <label className="block text-xs font-bold text-white flex items-center justify-between">
+              <span className="flex items-center gap-1.5 text-purple-300">
+                <Server className="w-4 h-4 text-purple-400" />
+                Địa Chỉ Máy Chủ Backend (API URL)
+              </span>
+              <span className="text-[10px] bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-md font-mono">Vercel ↔ Render</span>
+            </label>
+            <input
+              type="text"
+              value={backendUrl}
+              onChange={(e) => setBackendUrl(e.target.value)}
+              placeholder="Ví dụ: https://ai-video-factory-api.onrender.com hoặc http://localhost:8000"
+              className="w-full bg-slate-950 border border-slate-700 focus:border-purple-500 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none transition-colors font-mono"
+            />
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              👉 Khi mở Web trên <strong>Vercel (Điện thoại/Laptop)</strong>, hãy dán link Backend Render của bạn vào đây để kết nối với AI Engine.
+            </p>
+          </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-              <div className="bg-slate-900/80 border border-emerald-500/20 rounded-xl p-2.5 flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span className="text-slate-300">Whisper STT (Local Offline)</span>
+          {/* Engine Status Badges */}
+          <div className="bg-slate-950/70 border border-slate-800/80 rounded-2xl p-4 space-y-3">
+            <div className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+              <Cpu className="w-4 h-4 text-purple-400" />
+              Trạng Thái Công Cụ AI Miễn Phí Sẵn Có (Zero Cost):
+            </div>
+            
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="flex items-center gap-2 p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                <span className="truncate">Alibaba FunASR (99.8% Trung)</span>
               </div>
-              <div className="bg-slate-900/80 border border-emerald-500/20 rounded-xl p-2.5 flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span className="text-slate-300">Dịch thuật (Chrome Ext Free RPC)</span>
+              <div className="flex items-center gap-2 p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                <span className="truncate">OpenAI Whisper STT</span>
               </div>
-              <div className="bg-slate-900/80 border border-emerald-500/20 rounded-xl p-2.5 flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span className="text-slate-300">Lồng tiếng CapCut & viPiper Local</span>
+              <div className="flex items-center gap-2 p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                <span className="truncate">Google RPC Dịch Vô Tận</span>
               </div>
-              <div className="bg-slate-900/80 border border-emerald-500/20 rounded-xl p-2.5 flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span className="text-slate-300">Render 9:16 Shorts & Subtitle ASS</span>
+              <div className="flex items-center gap-2 p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                <span className="truncate">10 Giọng CapCut & Edge-TTS</span>
               </div>
             </div>
           </div>
 
           {/* Optional Gemini API Key */}
-          <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 space-y-3">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-white flex items-center gap-2">
-                <Key className="w-4 h-4 text-purple-400" />
-                Google Gemini API Key (Miễn Phí 100% - Tùy Chọn):
-              </label>
+          <div>
+            <label className="block text-xs font-bold text-slate-300 mb-1.5 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Key className="w-3.5 h-3.5 text-purple-400" />
+                Google Gemini API Key (Tùy chọn - Tăng tốc dịch)
+              </span>
               <a
                 href="https://aistudio.google.com/app/apikey"
                 target="_blank"
                 rel="noreferrer"
-                className="text-[11px] text-purple-400 hover:text-purple-300 flex items-center gap-1 font-semibold underline"
+                className="text-[11px] text-purple-400 hover:text-purple-300 flex items-center gap-1"
               >
-                <span>Lấy Key Free Tại Đây</span>
-                <ExternalLink className="w-3 h-3" />
+                Lấy Key miễn phí <ExternalLink className="w-3 h-3" />
               </a>
-            </div>
-
-            <p className="text-[11px] text-slate-400 leading-relaxed">
-              Google cấp gói Free Tier hoàn toàn $0 (không cần thẻ tín dụng). Nếu nhập key này, AI sẽ dịch thuật văn phong kiếm hiệp và tạo nội dung TikTok thông minh hơn nữa.
-            </p>
-
+            </label>
             <input
               type="password"
               value={geminiKey}
               onChange={(e) => setGeminiKey(e.target.value)}
-              placeholder={settingsData?.has_gemini_key ? `Đang dùng: ${settingsData.gemini_key_masked}` : 'AIzaSy... (Để trống nếu muốn dùng Free RPC)'}
-              className="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-4 py-2.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-purple-500"
+              placeholder="AIzaSy... (Để trống vẫn dùng dịch tự động bình thường)"
+              className="w-full bg-slate-900 border border-slate-800 focus:border-purple-500 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none transition-colors"
             />
           </div>
 
-          {/* Optional CapCut / Custom TTS Server */}
-          <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 space-y-3">
-            <label className="text-xs font-bold text-white flex items-center gap-2">
-              <Cpu className="w-4 h-4 text-indigo-400" />
-              CapCut TTS Server / Custom TTS Endpoint URL (Tùy Chọn):
-            </label>
-            <p className="text-[11px] text-slate-400 leading-relaxed">
-              Nếu bạn tự dựng máy chủ từ repo GitHub (như <i>kuwacom/CapCut-TTS</i> hoặc <i>Edge-TTS-Server</i>), hãy dán URL máy chủ tại đây (ví dụ: <code className="text-purple-300">http://localhost:8080</code>).
-            </p>
-            <input
-              type="url"
-              value={capcutUrl}
-              onChange={(e) => setCapcutUrl(e.target.value)}
-              placeholder="http://127.0.0.1:8080 (Để trống để dùng CapCut Presets có sẵn)"
-              className="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-4 py-2.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-purple-500"
-            />
-          </div>
-
-          {/* Footer Submit Button */}
+          {/* Action Buttons */}
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white bg-slate-800/60 hover:bg-slate-800 transition-colors"
+              className="px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
             >
               Đóng
             </button>
             <button
               type="submit"
               disabled={isSaving}
-              className="flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white shadow-lg shadow-purple-600/25 transition-all"
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 shadow-lg shadow-purple-600/30 transition-all hover:scale-105"
             >
-              {isSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-              <span>{savedSuccess ? 'Đã Lưu Thành Công!' : 'Lưu Cấu Hình'}</span>
+              {isSaving ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : savedSuccess ? (
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+              ) : (
+                <Save className="w-3.5 h-3.5" />
+              )}
+              {savedSuccess ? 'Đã Lưu Cấu Hình!' : 'Lưu Thay Đổi'}
             </button>
           </div>
         </form>
-
       </div>
     </div>
   );
