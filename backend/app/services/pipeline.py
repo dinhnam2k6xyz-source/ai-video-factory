@@ -126,13 +126,14 @@ class VideoFactoryPipeline:
             # Tắt tiếng gốc (bgm_volume=0.0) để đảm bảo 100% âm thanh phát ra là tiếng dịch chuẩn
             timing_aligner.mix_dub_with_bgm(full_dub_voice, bgm_path, mixed_audio_path, bgm_volume=0.0, voice_volume=1.4)
 
-            # 7. Render Video Full Đã Lồng Tiếng
-            self.update_task_progress(task_id, 75, "render_full_video", "Đang render Video Full lồng tiếng mới...")
+            # 7. Render Video Full Đã Lồng Tiếng & Burn Phụ Đề Đã Dịch
+            self.update_task_progress(task_id, 75, "render_full_video", "Đang lồng tiếng và chèn phụ đề đã dịch vào Video Full...")
             full_dubbed_video = str(task_out_dir / "full_dubbed_video.mp4")
+            full_dubbed_clean = str(task_out_dir / "full_dubbed_video_clean.mp4")
+            temp_dub_no_sub = str(task_temp_dir / "temp_dubbed_no_sub.mp4")
             full_ass_path = str(task_temp_dir / "full_subtitles.ass")
-            subtitle_generator.generate_ass_subtitles(tts_segments, full_ass_path, is_vertical=False)
-            
-            # Ghép video hình ảnh gốc với audio lồng tiếng mới
+
+            # 7a. Ghép video gốc với audio lồng tiếng
             remux_cmd = [
                 "ffmpeg", "-y",
                 "-threads", "0",
@@ -144,9 +145,24 @@ class VideoFactoryPipeline:
                 "-c:a", "aac",
                 "-movflags", "+faststart",
                 "-shortest",
-                full_dubbed_video
+                temp_dub_no_sub
             ]
             subprocess.run(remux_cmd, capture_output=True, check=True)
+
+            # Lưu 1 bản sạch không sub
+            try:
+                import shutil
+                shutil.copy2(temp_dub_no_sub, full_dubbed_clean)
+            except Exception:
+                pass
+
+            # 7b. Sinh phụ đề Cinema và burn cứng vào video Full
+            subtitle_generator.generate_ass_subtitles(tts_segments, full_ass_path, is_vertical=False, style_mode="cinema")
+            burn_ok = subtitle_generator.burn_subtitles(temp_dub_no_sub, full_ass_path, full_dubbed_video)
+            if not burn_ok or not os.path.exists(full_dubbed_video) or os.path.getsize(full_dubbed_video) == 0:
+                # Nếu burn lỗi thì copy bản không sub làm fallback
+                import shutil
+                shutil.copy2(temp_dub_no_sub, full_dubbed_video)
 
             # 8. Tự Tạo Shorts 9:16 & Cắt Highlights
             self.update_task_progress(task_id, 85, "generate_shorts", "Đang phân tích đoạn viral, crop 9:16 và burn phụ đề Karaoke...")
@@ -304,20 +320,31 @@ class VideoFactoryPipeline:
         bgm_path = str(task_temp_dir / "bgm.wav")
         timing_aligner.mix_dub_with_bgm(full_dub_voice, bgm_path, mixed_audio_path, bgm_volume=0.0, voice_volume=1.4)
 
-        # 3. Remux video full
+        # 3. Remux video full & burn phụ đề
         full_dubbed_video = str(task_out_dir / "full_dubbed_video.mp4")
+        temp_dub_no_sub = str(task_temp_dir / "temp_redub_no_sub.mp4")
+        full_ass_path = str(task_temp_dir / "full_subtitles.ass")
+
         remux_cmd = [
             "ffmpeg", "-y",
+            "-threads", "0",
             "-i", video_path,
             "-i", mixed_audio_path,
             "-map", "0:v:0",
             "-map", "1:a:0",
             "-c:v", "copy",
             "-c:a", "aac",
+            "-movflags", "+faststart",
             "-shortest",
-            full_dubbed_video
+            temp_dub_no_sub
         ]
         subprocess.run(remux_cmd, capture_output=True, check=True)
+
+        subtitle_generator.generate_ass_subtitles(tts_segments, full_ass_path, is_vertical=False, style_mode="cinema")
+        burn_ok = subtitle_generator.burn_subtitles(temp_dub_no_sub, full_ass_path, full_dubbed_video)
+        if not burn_ok or not os.path.exists(full_dubbed_video) or os.path.getsize(full_dubbed_video) == 0:
+            import shutil
+            shutil.copy2(temp_dub_no_sub, full_dubbed_video)
 
         task_data["speakers"] = speaker_profiles
         task_data["segments"] = tts_segments
