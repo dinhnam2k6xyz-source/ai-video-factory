@@ -37,6 +37,11 @@ app.include_router(settings_router, prefix=f"{settings.API_V1_STR}/settings")
 
 # Mount Frontend Static Assets
 FRONTEND_DIST = settings.STORAGE_DIR.parent.parent / "frontend" / "dist"
+if not FRONTEND_DIST.exists():
+    FRONTEND_DIST = Path("/app/frontend/dist")
+if not FRONTEND_DIST.exists():
+    FRONTEND_DIST = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "dist"
+
 FRONTEND_ASSETS = FRONTEND_DIST / "assets"
 
 if FRONTEND_ASSETS.exists():
