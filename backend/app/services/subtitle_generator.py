@@ -6,7 +6,8 @@ from typing import List, Dict, Any, Optional
 
 class SubtitleGenerator:
     """
-    VideoLingo-Enhanced Subtitle & Dubbing Burn Engine:
+    VideoLingo & Video-Subtitle-Remover Hybrid Engine:
+    - Smart Subtitle Masking (Làm mờ phụ đề gốc bằng Gaussian Blur gblur)
     - Netflix-Standard Subtitle Layout (Tự động ngắt 2 dòng cân đối, tối đa 38 ký tự/dòng)
     - Dynamic Karaoke Word-by-Word Animated Highlight (TikTok / Shorts 9:16)
     - Cinema Film Subtitles (Phụ đề điện ảnh tinh tế cho video 16:9)
@@ -63,7 +64,6 @@ class SubtitleGenerator:
         for i, w in enumerate(words[:-1]):
             char_count += len(w) + 1
             diff = abs(char_count - mid)
-            # Ưu tiên ngắt tại dấu phẩy hoặc dấu chấm
             if w.endswith((",", ".", "!", "?", ":", ";")):
                 diff -= 5
             if diff < best_diff:
@@ -184,41 +184,66 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         video_path: str,
         ass_path: str,
         output_path: str,
-        crf: int = 20,
+        blur_original_subtitles: bool = True,
+        crf: int = 21,
         preset: str = "ultrafast"
     ) -> bool:
         """
-        Burn cứng phụ đề ASS vào video bằng FFmpeg
+        Burn phụ đề ASS vào video kết hợp làm mờ phụ đề gốc (Gaussian Blur Mask):
+        - Nếu blur_original_subtitles=True: Làm mờ vùng đáy 16% (chứa chữ Trung/Anh gốc) bằng gblur=sigma=14
+          và đè phụ đề tiếng Việt đã dịch lên trên cực kỳ tinh tế, không để lộ chữ cũ.
         """
         if not os.path.exists(ass_path) or not os.path.exists(video_path):
             return False
 
         clean_ass = ass_path.replace("\\", "/").replace(":", "\\:")
         
-        cmd = [
-            "ffmpeg", "-y",
-            "-threads", "0",
-            "-i", str(video_path),
-            "-vf", f"ass='{clean_ass}'",
-            "-c:v", "libx264",
-            "-preset", str(preset),
-            "-crf", str(crf),
-            "-c:a", "copy",
-            "-movflags", "+faststart",
-            str(output_path)
-        ]
+        if blur_original_subtitles:
+            # Làm mờ dải đáy 16% video (khu vực chứa phụ đề gốc)
+            filter_complex = f"[0:v]split[base][sub];[sub]crop=in_w:in_h*0.16:0:in_h*0.82,gblur=sigma=14[blurred];[base][blurred]overlay=0:main_h*0.82,ass='{clean_ass}'[v_out]"
+            cmd = [
+                "ffmpeg", "-y",
+                "-threads", "0",
+                "-i", str(video_path),
+                "-filter_complex", filter_complex,
+                "-map", "[v_out]",
+                "-map", "0:a?",
+                "-c:v", "libx264",
+                "-pix_fmt", "yuv420p",
+                "-preset", str(preset),
+                "-crf", str(crf),
+                "-c:a", "copy",
+                "-movflags", "+faststart",
+                str(output_path)
+            ]
+        else:
+            cmd = [
+                "ffmpeg", "-y",
+                "-threads", "0",
+                "-i", str(video_path),
+                "-vf", f"ass='{clean_ass}'",
+                "-c:v", "libx264",
+                "-pix_fmt", "yuv420p",
+                "-preset", str(preset),
+                "-crf", str(crf),
+                "-c:a", "copy",
+                "-movflags", "+faststart",
+                str(output_path)
+            ]
         
         try:
             subprocess.run(cmd, capture_output=True, text=True, check=True)
             return True
-        except Exception:
+        except Exception as e:
+            print(f"[SubtitleGenerator] Burn with blur error: {e}, falling back...")
             try:
                 fallback_cmd = [
                     "ffmpeg", "-y",
                     "-threads", "0",
                     "-i", str(video_path),
-                    "-vf", f"subtitles='{clean_ass}'",
+                    "-vf", f"ass='{clean_ass}'",
                     "-c:v", "libx264",
+                    "-pix_fmt", "yuv420p",
                     "-preset", "ultrafast",
                     "-crf", "22",
                     "-c:a", "copy",

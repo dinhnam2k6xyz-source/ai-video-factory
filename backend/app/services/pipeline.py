@@ -164,15 +164,16 @@ class VideoFactoryPipeline:
             subtitle_generator.generate_ass_subtitles(tts_segments, full_ass_path, is_vertical=False, style_mode="cinema")
             clean_ass = full_ass_path.replace("\\", "/").replace(":", "\\:")
 
-            # 7b. Single-Pass Direct Video Mux & Subtitle Burn
+            # 7b. Single-Pass Direct Video Mux, Blur Old Subtitles & Burn New Subtitles
+            filter_complex = f"[0:v]split[base][sub];[sub]crop=in_w:in_h*0.16:0:in_h*0.82,gblur=sigma=14[blurred];[base][blurred]overlay=0:main_h*0.82,ass='{clean_ass}'[v_out]"
             render_cmd = [
                 "ffmpeg", "-y",
                 "-threads", "0",
                 "-i", video_path,
                 "-i", mixed_audio_path,
-                "-map", "0:v:0",
+                "-filter_complex", filter_complex,
+                "-map", "[v_out]",
                 "-map", "1:a:0",
-                "-vf", f"ass='{clean_ass}'",
                 "-c:v", "libx264",
                 "-pix_fmt", "yuv420p",
                 "-preset", "ultrafast",
@@ -190,7 +191,7 @@ class VideoFactoryPipeline:
             try:
                 subprocess.run(render_cmd, capture_output=True, check=True)
             except Exception as e:
-                print(f"[Pipeline] Single-pass burn error: {e}, using remux fallback...")
+                print(f"[Pipeline] Single-pass burn with blur error: {e}, using remux fallback...")
                 fallback_cmd = [
                     "ffmpeg", "-y", "-threads", "0",
                     "-i", video_path, "-i", mixed_audio_path,
@@ -375,20 +376,21 @@ class VideoFactoryPipeline:
         bgm_path = str(task_temp_dir / "bgm.wav")
         timing_aligner.mix_dub_with_bgm(full_dub_voice, bgm_path, mixed_audio_path, bgm_volume=0.0, voice_volume=1.4)
 
-        # 3. Remux video full & burn phụ đề
+        # 3. Remux video full, làm mờ phụ đề cũ & burn phụ đề mới
         full_dubbed_video = str(task_out_dir / "full_dubbed_video.mp4")
         full_ass_path = str(task_temp_dir / "full_subtitles.ass")
         subtitle_generator.generate_ass_subtitles(tts_segments, full_ass_path, is_vertical=False, style_mode="cinema")
         clean_ass = full_ass_path.replace("\\", "/").replace(":", "\\:")
 
+        filter_complex = f"[0:v]split[base][sub];[sub]crop=in_w:in_h*0.16:0:in_h*0.82,gblur=sigma=14[blurred];[base][blurred]overlay=0:main_h*0.82,ass='{clean_ass}'[v_out]"
         render_cmd = [
             "ffmpeg", "-y",
             "-threads", "0",
             "-i", video_path,
             "-i", mixed_audio_path,
-            "-map", "0:v:0",
+            "-filter_complex", filter_complex,
+            "-map", "[v_out]",
             "-map", "1:a:0",
-            "-vf", f"ass='{clean_ass}'",
             "-c:v", "libx264",
             "-pix_fmt", "yuv420p",
             "-preset", "ultrafast",
