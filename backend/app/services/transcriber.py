@@ -183,8 +183,8 @@ class Transcriber:
                 options = {
                     "word_timestamps": True,
                     "fp16": False,
-                    "beam_size": 3,
-                    "best_of": 3,
+                    "beam_size": 1,
+                    "best_of": 1,
                     "temperature": 0.0,
                     "condition_on_previous_text": False,
                     "compression_ratio_threshold": 2.4

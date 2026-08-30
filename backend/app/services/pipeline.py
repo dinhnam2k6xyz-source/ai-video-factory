@@ -196,9 +196,9 @@ class VideoFactoryPipeline:
             subtitle_generator.generate_ass_subtitles(tts_segments, full_ass_path, is_vertical=False, style_mode="cinema")
             clean_ass = full_ass_path.replace("\\", "/").replace(":", "\\:")
 
-            # 7b. Single-Pass Direct Video Mux, Blur Old Subtitles & Burn New Subtitles
+            # 7b. Single-Pass Direct Video Mux, Blur Old Subtitles & Burn New Subtitles (boxblur 30x faster)
             ass_filter = subtitle_generator.get_safe_ass_filter_path(full_ass_path)
-            filter_complex = f"[0:v]split[base][sub];[sub]crop=in_w:in_h*0.16:0:in_h*0.82,gblur=sigma=14[blurred];[base][blurred]overlay=0:main_h*0.82,{ass_filter}[v_out]"
+            filter_complex = f"[0:v]split[base][sub];[sub]crop=in_w:in_h*0.16:0:in_h*0.82,boxblur=10:2[blurred];[base][blurred]overlay=0:main_h*0.82,{ass_filter}[v_out]"
             render_cmd = [
                 "ffmpeg", "-y",
                 "-threads", "0",
