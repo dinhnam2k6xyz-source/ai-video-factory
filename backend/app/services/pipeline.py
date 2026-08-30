@@ -165,7 +165,8 @@ class VideoFactoryPipeline:
             clean_ass = full_ass_path.replace("\\", "/").replace(":", "\\:")
 
             # 7b. Single-Pass Direct Video Mux, Blur Old Subtitles & Burn New Subtitles
-            filter_complex = f"[0:v]split[base][sub];[sub]crop=in_w:in_h*0.16:0:in_h*0.82,gblur=sigma=14[blurred];[base][blurred]overlay=0:main_h*0.82,ass='{clean_ass}'[v_out]"
+            ass_filter = subtitle_generator.get_safe_ass_filter_path(full_ass_path)
+            filter_complex = f"[0:v]split[base][sub];[sub]crop=in_w:in_h*0.16:0:in_h*0.82,gblur=sigma=14[blurred];[base][blurred]overlay=0:main_h*0.82,{ass_filter}[v_out]"
             render_cmd = [
                 "ffmpeg", "-y",
                 "-threads", "0",
@@ -191,18 +192,33 @@ class VideoFactoryPipeline:
             try:
                 subprocess.run(render_cmd, capture_output=True, check=True)
             except Exception as e:
-                print(f"[Pipeline] Single-pass burn with blur error: {e}, using remux fallback...")
-                fallback_cmd = [
-                    "ffmpeg", "-y", "-threads", "0",
-                    "-i", video_path, "-i", mixed_audio_path,
-                    "-map", "0:v:0", "-map", "1:a:0",
-                    "-c:v", "copy",
-                    "-c:a", "aac", "-ar", "44100", "-ac", "2",
-                    "-disposition:a:0", "default",
-                    "-movflags", "+faststart", "-shortest",
-                    full_dubbed_video
-                ]
-                subprocess.run(fallback_cmd, capture_output=True, check=True)
+                print(f"[Pipeline] Single-pass burn with blur error: {e}, attempting direct ASS burn...")
+                try:
+                    direct_render_cmd = [
+                        "ffmpeg", "-y", "-threads", "0",
+                        "-i", video_path, "-i", mixed_audio_path,
+                        "-vf", ass_filter,
+                        "-map", "0:v:0", "-map", "1:a:0",
+                        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "ultrafast", "-crf", "21",
+                        "-c:a", "aac", "-ar", "44100", "-ac", "2",
+                        "-disposition:a:0", "default",
+                        "-movflags", "+faststart", "-shortest",
+                        full_dubbed_video
+                    ]
+                    subprocess.run(direct_render_cmd, capture_output=True, check=True)
+                except Exception as e2:
+                    print(f"[Pipeline] Direct ASS burn error: {e2}, using remux fallback...")
+                    fallback_cmd = [
+                        "ffmpeg", "-y", "-threads", "0",
+                        "-i", video_path, "-i", mixed_audio_path,
+                        "-map", "0:v:0", "-map", "1:a:0",
+                        "-c:v", "copy",
+                        "-c:a", "aac", "-ar", "44100", "-ac", "2",
+                        "-disposition:a:0", "default",
+                        "-movflags", "+faststart", "-shortest",
+                        full_dubbed_video
+                    ]
+                    subprocess.run(fallback_cmd, capture_output=True, check=True)
 
             # 8. Tự Tạo Shorts 9:16 & Cắt Highlights Song Song (Multithreaded Parallel Render)
             self.update_task_progress(task_id, 85, "generate_shorts", "Đang phân tích đoạn viral, crop 9:16 và burn phụ đề Karaoke song song...")
@@ -380,9 +396,9 @@ class VideoFactoryPipeline:
         full_dubbed_video = str(task_out_dir / "full_dubbed_video.mp4")
         full_ass_path = str(task_temp_dir / "full_subtitles.ass")
         subtitle_generator.generate_ass_subtitles(tts_segments, full_ass_path, is_vertical=False, style_mode="cinema")
-        clean_ass = full_ass_path.replace("\\", "/").replace(":", "\\:")
+        ass_filter = subtitle_generator.get_safe_ass_filter_path(full_ass_path)
 
-        filter_complex = f"[0:v]split[base][sub];[sub]crop=in_w:in_h*0.16:0:in_h*0.82,gblur=sigma=14[blurred];[base][blurred]overlay=0:main_h*0.82,ass='{clean_ass}'[v_out]"
+        filter_complex = f"[0:v]split[base][sub];[sub]crop=in_w:in_h*0.16:0:in_h*0.82,gblur=sigma=14[blurred];[base][blurred]overlay=0:main_h*0.82,{ass_filter}[v_out]"
         render_cmd = [
             "ffmpeg", "-y",
             "-threads", "0",
@@ -408,17 +424,31 @@ class VideoFactoryPipeline:
         try:
             subprocess.run(render_cmd, capture_output=True, check=True)
         except Exception:
-            fallback_cmd = [
-                "ffmpeg", "-y", "-threads", "0",
-                "-i", video_path, "-i", mixed_audio_path,
-                "-map", "0:v:0", "-map", "1:a:0",
-                "-c:v", "copy",
-                "-c:a", "aac", "-ar", "44100", "-ac", "2",
-                "-disposition:a:0", "default",
-                "-movflags", "+faststart", "-shortest",
-                full_dubbed_video
-            ]
-            subprocess.run(fallback_cmd, capture_output=True, check=True)
+            try:
+                direct_render_cmd = [
+                    "ffmpeg", "-y", "-threads", "0",
+                    "-i", video_path, "-i", mixed_audio_path,
+                    "-vf", ass_filter,
+                    "-map", "0:v:0", "-map", "1:a:0",
+                    "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "ultrafast", "-crf", "21",
+                    "-c:a", "aac", "-ar", "44100", "-ac", "2",
+                    "-disposition:a:0", "default",
+                    "-movflags", "+faststart", "-shortest",
+                    full_dubbed_video
+                ]
+                subprocess.run(direct_render_cmd, capture_output=True, check=True)
+            except Exception:
+                fallback_cmd = [
+                    "ffmpeg", "-y", "-threads", "0",
+                    "-i", video_path, "-i", mixed_audio_path,
+                    "-map", "0:v:0", "-map", "1:a:0",
+                    "-c:v", "copy",
+                    "-c:a", "aac", "-ar", "44100", "-ac", "2",
+                    "-disposition:a:0", "default",
+                    "-movflags", "+faststart", "-shortest",
+                    full_dubbed_video
+                ]
+                subprocess.run(fallback_cmd, capture_output=True, check=True)
 
         task_data["speakers"] = speaker_profiles
         task_data["segments"] = tts_segments

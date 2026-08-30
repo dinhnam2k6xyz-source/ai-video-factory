@@ -91,8 +91,12 @@ class SmartCropper:
         ]
         
         if ass_path and os.path.exists(ass_path):
-            clean_ass = ass_path.replace("\\", "/").replace(":", "\\:")
-            filters.append(f"ass='{clean_ass}'")
+            try:
+                rel = os.path.relpath(ass_path).replace("\\", "/")
+                filters.append(f"ass=filename='{rel}'")
+            except Exception:
+                clean = os.path.abspath(ass_path).replace("\\", "/").replace(":", "\\\\:")
+                filters.append(f"ass=filename='{clean}'")
             
         vf_chain = ",".join(filters)
         
