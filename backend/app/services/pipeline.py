@@ -174,11 +174,15 @@ class VideoFactoryPipeline:
                 "-map", "1:a:0",
                 "-vf", f"ass='{clean_ass}'",
                 "-c:v", "libx264",
+                "-pix_fmt", "yuv420p",
                 "-preset", "ultrafast",
                 "-tune", "fastdecode",
                 "-crf", "21",
                 "-c:a", "aac",
+                "-ar", "44100",
+                "-ac", "2",
                 "-b:a", "192k",
+                "-disposition:a:0", "default",
                 "-movflags", "+faststart",
                 "-shortest",
                 full_dubbed_video
@@ -191,7 +195,9 @@ class VideoFactoryPipeline:
                     "ffmpeg", "-y", "-threads", "0",
                     "-i", video_path, "-i", mixed_audio_path,
                     "-map", "0:v:0", "-map", "1:a:0",
-                    "-c:v", "copy", "-c:a", "aac",
+                    "-c:v", "copy",
+                    "-c:a", "aac", "-ar", "44100", "-ac", "2",
+                    "-disposition:a:0", "default",
                     "-movflags", "+faststart", "-shortest",
                     full_dubbed_video
                 ]
@@ -384,11 +390,15 @@ class VideoFactoryPipeline:
             "-map", "1:a:0",
             "-vf", f"ass='{clean_ass}'",
             "-c:v", "libx264",
+            "-pix_fmt", "yuv420p",
             "-preset", "ultrafast",
             "-tune", "fastdecode",
             "-crf", "21",
             "-c:a", "aac",
+            "-ar", "44100",
+            "-ac", "2",
             "-b:a", "192k",
+            "-disposition:a:0", "default",
             "-movflags", "+faststart",
             "-shortest",
             full_dubbed_video
@@ -400,7 +410,9 @@ class VideoFactoryPipeline:
                 "ffmpeg", "-y", "-threads", "0",
                 "-i", video_path, "-i", mixed_audio_path,
                 "-map", "0:v:0", "-map", "1:a:0",
-                "-c:v", "copy", "-c:a", "aac",
+                "-c:v", "copy",
+                "-c:a", "aac", "-ar", "44100", "-ac", "2",
+                "-disposition:a:0", "default",
                 "-movflags", "+faststart", "-shortest",
                 full_dubbed_video
             ]

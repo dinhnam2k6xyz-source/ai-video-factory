@@ -104,11 +104,15 @@ class SmartCropper:
             "-t", str(duration),
             "-vf", vf_chain,
             "-c:v", "libx264",
+            "-pix_fmt", "yuv420p",
             "-preset", str(preset),
             "-tune", "fastdecode",
             "-crf", str(crf),
             "-c:a", "aac",
+            "-ar", "44100",
+            "-ac", "2",
             "-b:a", "192k",
+            "-disposition:a:0", "default",
             "-movflags", "+faststart",
             str(output_path)
         ]
@@ -126,8 +130,14 @@ class SmartCropper:
                     "-i", str(video_path),
                     "-t", str(duration),
                     "-vf", fallback_vf,
-                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "22",
+                    "-c:v", "libx264",
+                    "-pix_fmt", "yuv420p",
+                    "-preset", "ultrafast",
+                    "-crf", "22",
                     "-c:a", "aac",
+                    "-ar", "44100",
+                    "-ac", "2",
+                    "-disposition:a:0", "default",
                     "-movflags", "+faststart",
                     str(output_path)
                 ]
