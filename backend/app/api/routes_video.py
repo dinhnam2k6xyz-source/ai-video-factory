@@ -82,6 +82,82 @@ async def upload_video(request: Request, background_tasks: BackgroundTasks):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Lỗi xử lý file video tải lên: {str(e)}")
 
+@router.post("/upload-chunk")
+async def upload_chunk(request: Request, background_tasks: BackgroundTasks):
+    """
+    Chunked Upload Endpoint:
+    Chia nhỏ video thành từng phần 4MB để tải lên siêu tốc và không bao giờ bị lỗi Cloudflare 524 Timeout
+    """
+    try:
+        form = await request.form()
+        chunk_file = form.get("chunk")
+        upload_id = str(form.get("upload_id") or "")
+        chunk_index = int(form.get("chunk_index") or 0)
+        total_chunks = int(form.get("total_chunks") or 1)
+        filename = str(form.get("filename") or "video.mp4")
+        
+        if not chunk_file or not upload_id:
+            raise HTTPException(status_code=400, detail="Thiếu dữ liệu phân đoạn chunk.")
+
+        temp_part_file = settings.TEMP_DIR / f"upload_{upload_id}.part"
+        
+        # Ghi nối tiếp chunk vào file
+        content = await chunk_file.read() if hasattr(chunk_file, "read") else b""
+        with open(temp_part_file, "ab" if chunk_index > 0 else "wb") as f:
+            f.write(content)
+            
+        # Nếu là chunk cuối cùng -> Chuyển vào uploads và khởi động pipeline
+        if chunk_index == total_chunks - 1:
+            task_id = upload_id[:8]
+            raw_ext = Path(filename).suffix if filename else ".mp4"
+            file_ext = raw_ext.lower() if raw_ext else ".mp4"
+            if file_ext not in [".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v", ".flv", ".ts"]:
+                file_ext = ".mp4"
+                
+            save_path = settings.UPLOADS_DIR / f"{task_id}{file_ext}"
+            if os.path.exists(save_path):
+                os.remove(save_path)
+            shutil.move(temp_part_file, save_path)
+            
+            target_lang = str(form.get("target_lang") or "vi")
+            source_lang = str(form.get("source_lang") or "auto")
+            voice_mode = str(form.get("voice_mode") or "solo")
+            primary_voice_id = str(form.get("primary_voice_id") or "capcut_serious_man")
+            prompt_val = form.get("custom_prompt")
+            custom_prompt = str(prompt_val).strip() if prompt_val and str(prompt_val).strip() else None
+
+            print(f"[UploadChunk] Full file assembled: {filename}, task_id: {task_id}, size: {os.path.getsize(save_path)} bytes")
+
+            background_tasks.add_task(
+                pipeline.run_pipeline,
+                task_id=task_id,
+                video_path=str(save_path),
+                target_lang=target_lang,
+                source_lang=source_lang,
+                voice_mode=voice_mode,
+                primary_voice_id=primary_voice_id,
+                custom_prompt=custom_prompt
+            )
+
+            return {
+                "status": "queued",
+                "task_id": task_id,
+                "filename": filename,
+                "completed": True,
+                "message": "Video đã tải lên hoàn tất và đang được xử lý."
+            }
+
+        return {
+            "status": "chunk_received",
+            "chunk_index": chunk_index,
+            "total_chunks": total_chunks,
+            "completed": False
+        }
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi tải phân đoạn chunk: {str(e)}")
+
 @router.post("/process-url")
 async def process_video_url(req: ProcessURLRequest, background_tasks: BackgroundTasks):
     """Tải video từ URL (YouTube / TikTok / Douyin) và xử lý"""

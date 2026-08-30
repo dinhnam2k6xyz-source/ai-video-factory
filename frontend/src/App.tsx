@@ -72,92 +72,88 @@ export const App: React.FC = () => {
     setIsLoading(true);
 
     if (params.file) {
-      // Chuyển màn hình sang Progress tức thì
-      const tempId = `upload_${Date.now().toString().slice(-4)}`;
+      const file = params.file;
+      const uploadId = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+      const tempId = `upload_${uploadId}`;
+      
       setCurrentTask({
         task_id: tempId,
         status: 'processing',
         progress: 3,
         stage: 'uploading',
-        message: 'Đang tải file video lên máy chủ (0%)...'
+        message: 'Đang chuẩn bị tải file video lên máy chủ (0%)...'
       });
 
-      const formData = new FormData();
-      formData.append('file', params.file);
-      formData.append('target_lang', params.targetLang || 'vi');
-      formData.append('source_lang', params.sourceLang || 'auto');
-      formData.append('voice_mode', params.voiceMode || 'solo');
-      formData.append('primary_voice_id', params.primaryVoiceId || 'capcut_serious_man');
-      formData.append('custom_prompt', params.customPrompt || '');
+      const CHUNK_SIZE = 4 * 1024 * 1024; // 4MB per chunk -> chống 100% lỗi Cloudflare 524 Timeout
+      const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
 
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', getApiUrl('/api/video/upload'), true);
+      const uploadChunkSequentially = async (index: number) => {
+        if (index >= totalChunks) return;
 
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) {
-          const uploadPct = Math.round((e.loaded / e.total) * 100);
-          const mbLoaded = (e.loaded / (1024 * 1024)).toFixed(1);
-          const mbTotal = (e.total / (1024 * 1024)).toFixed(1);
-          const pipelinePct = Math.max(3, Math.min(10, Math.round((uploadPct / 100) * 10)));
-          
-          setCurrentTask({
-            task_id: tempId,
-            status: 'processing',
-            progress: pipelinePct,
-            stage: 'uploading',
-            message: `Đang tải video lên máy chủ: ${uploadPct}% (${mbLoaded} MB / ${mbTotal} MB)...`
+        const start = index * CHUNK_SIZE;
+        const end = Math.min(file.size, start + CHUNK_SIZE);
+        const chunk = file.slice(start, end);
+
+        const formData = new FormData();
+        formData.append('chunk', chunk, file.name);
+        formData.append('upload_id', uploadId);
+        formData.append('chunk_index', String(index));
+        formData.append('total_chunks', String(totalChunks));
+        formData.append('filename', file.name);
+        formData.append('target_lang', params.targetLang || 'vi');
+        formData.append('source_lang', params.sourceLang || 'auto');
+        formData.append('voice_mode', params.voiceMode || 'solo');
+        formData.append('primary_voice_id', params.primaryVoiceId || 'capcut_serious_man');
+        formData.append('custom_prompt', params.customPrompt || '');
+
+        const uploadPct = Math.round(((index + 1) / totalChunks) * 100);
+        const mbLoaded = ((index + 1) * (CHUNK_SIZE / (1024 * 1024))).toFixed(1);
+        const mbTotal = (file.size / (1024 * 1024)).toFixed(1);
+        const pipelinePct = Math.max(3, Math.min(10, Math.round((uploadPct / 100) * 10)));
+
+        setCurrentTask({
+          task_id: tempId,
+          status: 'processing',
+          progress: pipelinePct,
+          stage: 'uploading',
+          message: `Đang tải video lên: ${uploadPct}% (phần ${index + 1}/${totalChunks} - ${Math.min(Number(mbLoaded), Number(mbTotal)).toFixed(1)}MB / ${mbTotal}MB)...`
+        });
+
+        try {
+          const res = await fetch(getApiUrl('/api/video/upload-chunk'), {
+            method: 'POST',
+            body: formData
           });
-        }
-      };
 
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            const data = JSON.parse(xhr.responseText);
-            if (data.task_id) {
-              setCurrentTask({
-                task_id: data.task_id,
-                status: 'processing',
-                progress: 10,
-                stage: 'media_info',
-                message: 'Tải lên hoàn tất! Đang phân tích video & audio...'
-              });
-            }
-          } catch (err) {
-            console.error(err);
+          if (!res.ok) {
+            throw new Error(`Lỗi tải phân đoạn video (${res.status})`);
           }
-        } else {
-          let errorMsg = `Lỗi tải lên video (${xhr.status})`;
-          try {
-            const errData = JSON.parse(xhr.responseText);
-            if (errData.detail) {
-              errorMsg = typeof errData.detail === 'string' ? errData.detail : JSON.stringify(errData.detail);
-            }
-          } catch (_) {}
 
+          const resData = await res.json();
+          if (resData.completed && resData.task_id) {
+            setCurrentTask({
+              task_id: resData.task_id,
+              status: 'processing',
+              progress: 10,
+              stage: 'media_info',
+              message: 'Tải lên hoàn tất! Đang phân tích video & audio...'
+            });
+          } else {
+            await uploadChunkSequentially(index + 1);
+          }
+        } catch (err: any) {
           setCurrentTask({
             task_id: tempId,
             status: 'failed',
             progress: 0,
             stage: 'error',
-            message: errorMsg
+            message: err.message || 'Lỗi tải video lên máy chủ.'
           });
           setIsLoading(false);
         }
       };
 
-      xhr.onerror = () => {
-        setCurrentTask({
-          task_id: tempId,
-          status: 'failed',
-          progress: 0,
-          stage: 'error',
-          message: 'Không thể kết nối đến máy chủ để tải video lên.'
-        });
-        setIsLoading(false);
-      };
-
-      xhr.send(formData);
+      uploadChunkSequentially(0);
 
     } else if (params.url) {
       const tempId = `url_${Date.now().toString().slice(-4)}`;
