@@ -36,10 +36,10 @@ export const App: React.FC = () => {
     fetchCredits();
   }, []);
 
-  // Poll task progress
+  // Poll task progress (chỉ poll khi có task_id thật từ server, không poll ID tạm upload_)
   useEffect(() => {
     let interval: any;
-    if (currentTask && currentTask.status === 'processing') {
+    if (currentTask && currentTask.status === 'processing' && !currentTask.task_id.startsWith('upload_')) {
       interval = setInterval(async () => {
         try {
           const res = await fetch(getApiUrl(`/api/video/status/${currentTask.task_id}`));
