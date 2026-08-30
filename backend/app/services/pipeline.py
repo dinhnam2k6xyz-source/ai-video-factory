@@ -55,6 +55,37 @@ class VideoFactoryPipeline:
                 pass
         return {"status": "not_found"}
 
+    @staticmethod
+    def auto_cleanup_storage():
+        """
+        Tự động dọn dẹp dung lượng đĩa cứng (Auto Storage Garbage Collector):
+        - Xóa các thư mục temp cũ
+        - Giữ lại 3 task mới nhất trong uploads và outputs
+        - Đảm bảo đĩa luôn có dung lượng trống để render video dài mà không bao giờ bị lỗi No space left on device
+        """
+        try:
+            if settings.TEMP_DIR.exists():
+                for item in settings.TEMP_DIR.iterdir():
+                    if item.is_dir():
+                        shutil.rmtree(item, ignore_errors=True)
+                    else:
+                        item.unlink(missing_ok=True)
+                        
+            if settings.UPLOADS_DIR.exists():
+                files = sorted(list(settings.UPLOADS_DIR.iterdir()), key=lambda x: x.stat().st_mtime, reverse=True)
+                for f in files[3:]:
+                    if f.is_file():
+                        f.unlink(missing_ok=True)
+                    elif f.is_dir():
+                        shutil.rmtree(f, ignore_errors=True)
+
+            if settings.OUTPUTS_DIR.exists():
+                tasks = sorted([d for d in settings.OUTPUTS_DIR.iterdir() if d.is_dir()], key=lambda x: x.stat().st_mtime, reverse=True)
+                for old_t in tasks[3:]:
+                    shutil.rmtree(old_t, ignore_errors=True)
+        except Exception as e:
+            print(f"[Pipeline] Auto cleanup error: {e}")
+
     def update_task_progress(self, task_id: str, progress: int, stage: str, message: str, data: Dict[str, Any] = None):
         if task_id in self.active_tasks:
             self.active_tasks[task_id].update({
@@ -78,6 +109,7 @@ class VideoFactoryPipeline:
         """
         Chạy toàn bộ pipeline xử lý video tự động V2
         """
+        self.auto_cleanup_storage()
         task_temp_dir = settings.TEMP_DIR / task_id
         task_out_dir = settings.OUTPUTS_DIR / task_id
         task_temp_dir.mkdir(parents=True, exist_ok=True)
