@@ -1,0 +1,22 @@
+# Koyeb App Configuration for 24/7 Cloud Deployment
+name: ai-video-factory
+services:
+  - name: web
+    type: web
+    docker:
+      dockerfile: Dockerfile
+    ports:
+      - port: 8000
+        protocol: http
+    routes:
+      - path: /
+        port: 8000
+    env:
+      - key: GEMINI_API_KEY
+        value: AIzaSyBpG4I7bOSpL3IgSRdlvM0FoEhEISgk4EM
+      - key: PORT
+        value: "8000"
+    regions:
+      - sin
+    instance_types:
+      - type: free
