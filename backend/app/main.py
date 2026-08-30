@@ -35,12 +35,14 @@ app.include_router(voices_router, prefix=settings.API_V1_STR)
 app.include_router(credits_router, prefix=settings.API_V1_STR)
 app.include_router(settings_router, prefix=f"{settings.API_V1_STR}/settings")
 
-# Mount Frontend Static Assets
-FRONTEND_DIST = settings.STORAGE_DIR.parent.parent / "frontend" / "dist"
+# Mount Frontend Static Assets (Hỗ trợ cả root/frontend và backend/frontend_dist)
+FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend_dist"
+if not FRONTEND_DIST.exists():
+    FRONTEND_DIST = settings.STORAGE_DIR.parent.parent / "frontend" / "dist"
 if not FRONTEND_DIST.exists():
     FRONTEND_DIST = Path("/app/frontend/dist")
 if not FRONTEND_DIST.exists():
-    FRONTEND_DIST = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "dist"
+    FRONTEND_DIST = Path("/app/backend/frontend_dist")
 
 FRONTEND_ASSETS = FRONTEND_DIST / "assets"
 
