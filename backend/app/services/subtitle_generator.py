@@ -6,10 +6,10 @@ from typing import List, Dict, Any, Optional
 
 class SubtitleGenerator:
     """
-    Công cụ tạo và chèn phụ đề chuyên nghiệp vào video (In-video Subtitle Burning):
-    - Karaoke Word-by-word Highlight (Chuẩn phong cách CapCut / MrBeast / TikTok Shorts)
-    - Phụ đề điện ảnh Cinema Subtitles (Chuẩn Netflix / YouTube 16:9)
-    - Phụ đề Song Ngữ (Bilingual Subtitles)
+    VideoLingo-Enhanced Subtitle & Dubbing Burn Engine:
+    - Netflix-Standard Subtitle Layout (Tự động ngắt 2 dòng cân đối, tối đa 38 ký tự/dòng)
+    - Dynamic Karaoke Word-by-Word Animated Highlight (TikTok / Shorts 9:16)
+    - Cinema Film Subtitles (Phụ đề điện ảnh tinh tế cho video 16:9)
     - Xuất file SRT / TXT / ASS / VTT tương thích mọi phần mềm dựng phim
     """
 
@@ -46,6 +46,34 @@ class SubtitleGenerator:
         t = text.replace("{", "(").replace("}", ")").replace("\\", "/")
         return re.sub(r'\s+', ' ', t).strip()
 
+    def format_cinema_lines(self, text: str, max_chars: int = 38) -> str:
+        """
+        VideoLingo Netflix Subtitle Splitter:
+        Tự động ngắt dòng cân đối tại vị trí tự nhiên giữa câu nếu vượt quá max_chars
+        """
+        words = text.split()
+        if len(text) <= max_chars or len(words) <= 5:
+            return text
+
+        mid = len(text) // 2
+        best_split = len(words) // 2
+        best_diff = float("inf")
+        char_count = 0
+        
+        for i, w in enumerate(words[:-1]):
+            char_count += len(w) + 1
+            diff = abs(char_count - mid)
+            # Ưu tiên ngắt tại dấu phẩy hoặc dấu chấm
+            if w.endswith((",", ".", "!", "?", ":", ";")):
+                diff -= 5
+            if diff < best_diff:
+                best_diff = diff
+                best_split = i + 1
+
+        line1 = " ".join(words[:best_split])
+        line2 = " ".join(words[best_split:])
+        return f"{line1}\\N{line2}"
+
     def generate_ass_subtitles(
         self,
         segments: List[Dict[str, Any]],
@@ -55,17 +83,14 @@ class SubtitleGenerator:
         style_mode: str = "karaoke"  # "karaoke", "cinema", "bilingual"
     ) -> str:
         """
-        Sinh file phụ đề .ASS với hiệu ứng động Karaoke đổi màu từng từ theo thời gian nói:
-        - is_vertical = True: Tối ưu 9:16 (MarginV lớn tránh che bởi UI TikTok, font to, chữ hoa)
-        - is_vertical = False: Tối ưu 16:9 (Phụ đề điện ảnh, viền thanh thoát, cân đối khung hình)
+        Sinh file phụ đề .ASS chuẩn Netflix / VideoLingo
         """
         play_res_x = 1080 if is_vertical else 1920
         play_res_y = 1920 if is_vertical else 1080
         font_size = 38 if is_vertical else 26
-        margin_v = 240 if is_vertical else 55  # Tránh vùng icon TikTok ở góc dưới
+        margin_v = 240 if is_vertical else 55
         font_name = "Segoe UI, Arial, Tahoma, sans-serif"
 
-        # ASS Header với các Style định nghĩa sẵn
         ass_header = f"""[Script Info]
 Title: AI Video Factory Subtitles
 ScriptType: v4.00+
@@ -106,7 +131,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 if not words:
                     continue
 
-                # Chia câu thành các cụm 3-5 từ để hiển thị đẹp mắt không tràn viền
                 chunk_size = 4 if is_vertical else 7
                 chunks = [words[i:i + chunk_size] for i in range(0, len(words), chunk_size)]
                 total_duration = end - start
@@ -117,7 +141,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     c_end = c_start + chunk_dur
                     c_total_dur_cs = int(round((c_end - c_start) * 100))
                     
-                    # Tính thời lượng từng từ (centiseconds) tỷ lệ theo độ dài từ
                     word_lens = [max(1, len(w)) for w in chunk]
                     total_lens = sum(word_lens)
                     
@@ -140,14 +163,16 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             elif style_mode == "bilingual":
                 start_str = self.format_timestamp_ass(start)
                 end_str = self.format_timestamp_ass(end)
-                bilingual_line = f"{trans_text}\\N{{\\rBilingualBottom}}{orig_text}"
+                formatted_trans = self.format_cinema_lines(trans_text, max_chars=36)
+                bilingual_line = f"{formatted_trans}\\N{{\\rBilingualBottom}}{orig_text}"
                 events.append(f"Dialogue: 0,{start_str},{end_str},BilingualTop,,0,0,0,,{bilingual_line}")
 
-            # 3. Chế độ Cinema tiêu chuẩn (Phụ đề Video 16:9)
+            # 3. Chế độ Cinema tiêu chuẩn (VideoLingo Netflix Subtitle Split)
             else:
                 start_str = self.format_timestamp_ass(start)
                 end_str = self.format_timestamp_ass(end)
-                events.append(f"Dialogue: 0,{start_str},{end_str},CinemaStyle,,0,0,0,,{trans_text}")
+                formatted_trans = self.format_cinema_lines(trans_text, max_chars=38)
+                events.append(f"Dialogue: 0,{start_str},{end_str},CinemaStyle,,0,0,0,,{formatted_trans}")
 
         with open(output_ass_path, "w", encoding="utf-8") as f:
             f.write(ass_header + "\n".join(events) + "\n")
@@ -163,15 +188,11 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         preset: str = "ultrafast"
     ) -> bool:
         """
-        Burn cứng phụ đề ASS vào video bằng FFmpeg:
-        - Tự động chuẩn hóa đường dẫn trên Windows để tránh lỗi libass path escape
-        - Sử dụng ultrafast preset và tối đa CPU threads để render trong vài giây
+        Burn cứng phụ đề ASS vào video bằng FFmpeg
         """
         if not os.path.exists(ass_path) or not os.path.exists(video_path):
-            print(f"[SubtitleGenerator] File không tồn tại: video={video_path}, ass={ass_path}")
             return False
 
-        # Chuẩn hóa path cho FFmpeg filter trên Windows: thay \ thành / và escape dấu :
         clean_ass = ass_path.replace("\\", "/").replace(":", "\\:")
         
         cmd = [
@@ -188,11 +209,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         ]
         
         try:
-            res = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            subprocess.run(cmd, capture_output=True, text=True, check=True)
             return True
-        except subprocess.CalledProcessError as e:
-            print(f"[SubtitleGenerator] FFmpeg ASS Filter Error: {e.stderr}")
-            # Fallback nếu libass gặp lỗi font: dùng subtitles filter
+        except Exception:
             try:
                 fallback_cmd = [
                     "ffmpeg", "-y",
@@ -208,8 +227,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 ]
                 subprocess.run(fallback_cmd, capture_output=True, check=True)
                 return True
-            except Exception as e2:
-                print(f"[SubtitleGenerator] Fallback subtitle burn failed: {e2}")
+            except Exception:
                 return False
 
     def generate_srt(

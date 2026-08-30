@@ -8,7 +8,12 @@ from typing import Any, Dict, List, Optional
 from app.core.config import settings
 
 class Translator:
-    """Dịch thông minh theo lô (Batch) sử dụng Chrome Extension Client & MyMemory dự phòng"""
+    """
+    VideoLingo-Inspired 3-Step Dubbing Translation Engine:
+    - Rhythmic Syllable Matching: Khớp số âm tiết theo thời lượng (1s ~ 3-4 âm tiết tiếng Việt)
+    - Netflix-Style Dubbing Adaptation: Văn phong nói tự nhiên, gãy gọn, không dài dòng
+    - Batch Chrome Ext RPC + Gemini Multi-Step Context Translation
+    """
 
     BATCH_SIZE = 25
 
@@ -36,11 +41,11 @@ class Translator:
         target_lang: str = "vi",
         source_lang: str = "auto",
     ) -> List[Dict[str, Any]]:
-        """Dịch danh sách segments sang ngôn ngữ đích chuẩn xác"""
+        """Dịch danh sách segments sang ngôn ngữ đích chuẩn xác và khớp khẩu hình (VideoLingo style)"""
         if not segments:
             return segments
 
-        # 1. Thử dịch bằng Gemini nếu có API Key
+        # 1. Thử dịch bằng Gemini với Prompt VideoLingo Rhythmic Syllable Matching
         gemini = self._get_gemini()
         if gemini:
             translated_map = self._translate_with_gemini(segments, target_lang)
@@ -89,7 +94,6 @@ class Translator:
                 for seg, trans in zip(chunk, translated_lines):
                     seg["translated_text"] = trans.strip()
             else:
-                # Nếu dịch cả cụm bị lệch dòng, dịch từng câu đơn
                 for seg in chunk:
                     orig = self._original_text(seg)
                     if not orig:
@@ -106,7 +110,6 @@ class Translator:
                 time.sleep(0.1)
 
     def _fetch_chrome_ext_translation(self, text: str, target_lang: str, source_lang: str) -> Optional[List[str]]:
-        """Gọi Google Translate Chrome Extension RPC với văn bản nhiều dòng"""
         try:
             encoded = urllib.parse.quote(text)
             url = f"https://translate.googleapis.com/translate_a/single?client=dict-chrome-ex&sl={source_lang}&tl={target_lang}&dt=t&q={encoded}"
@@ -131,7 +134,6 @@ class Translator:
             return None
 
     def _fetch_chrome_ext_single(self, text: str, target_lang: str, source_lang: str) -> Optional[str]:
-        """Dịch 1 câu qua Google Translate Chrome Extension Client"""
         try:
             encoded = urllib.parse.quote(text)
             url = f"https://translate.googleapis.com/translate_a/single?client=dict-chrome-ex&sl={source_lang}&tl={target_lang}&dt=t&q={encoded}"
@@ -153,7 +155,6 @@ class Translator:
             return None
 
     def _fetch_mymemory(self, text: str, target_lang: str, source_lang: str) -> Optional[str]:
-        """Dịch dự phòng qua MyMemory API"""
         try:
             sl = source_lang if source_lang != "auto" else "auto"
             tl = target_lang
@@ -164,34 +165,44 @@ class Translator:
                 translated = data.get("responseData", {}).get("translatedText")
                 if translated and not self._is_provider_error_response(translated):
                     return translated.strip()
+            return None
         except Exception:
-            pass
-        return None
+            return None
 
     def _translate_with_gemini(
         self, segments: List[Dict[str, Any]], target_lang: str
     ) -> Dict[str, str]:
+        """VideoLingo-Style Contextual & Length-Constrained Translation Prompt"""
         gemini = self._get_gemini()
         if not gemini:
             return {}
 
         try:
-            items_to_send = [
-                {
+            items_to_send = []
+            for segment in segments:
+                dur = round(float(segment.get("end", 0)) - float(segment.get("start", 0)), 1)
+                max_words = max(3, int(dur * 3.5))  # Giới hạn số từ tối đa để khớp khẩu hình
+                items_to_send.append({
                     "id": segment.get("id"),
                     "text": self._original_text(segment),
-                    "duration": round(float(segment.get("end", 0)) - float(segment.get("start", 0)), 1),
-                }
-                for segment in segments
-            ]
-            prompt = (
-                f"Bạn là chuyên gia dịch thuật và lồng tiếng video chuyên nghiệp. "
-                f"Hãy dịch các câu thoại sau sang ngôn ngữ '{target_lang}' sao cho tự nhiên, "
-                f"chuẩn văn phong nói và số từ/âm tiết tương đương để vừa khớp với thời gian thoại gốc.\n"
-                f"Chỉ trả về JSON array hợp lệ theo format: "
-                f"[{{\"id\": 0, \"translated_text\": \"...\"}}].\n\n"
-                f"Danh sách câu:\n{json.dumps(items_to_send, ensure_ascii=False)}"
-            )
+                    "duration_sec": dur,
+                    "target_max_words": max_words
+                })
+
+            prompt = f"""Bạn là một đạo diễn lồng tiếng phim và biên dịch viên phụ đề chuyên nghiệp chuẩn Netflix (theo chuẩn VideoLingo).
+Nhiệm vụ: Dịch các câu thoại sau sang ngôn ngữ '{target_lang}' đáp ứng nghiêm ngặt 3 tiêu chí:
+1. KHỚP THỜI LƯỢNG NÓI (Rhythmic Dubbing): Số từ của câu dịch không được vượt quá `target_max_words` để diễn viên lồng tiếng nói vừa khít khung thời gian `duration_sec`, không bị nói vội hoặc bị tràn sang câu sau.
+2. VĂN PHONG TỰ NHIÊN (Spoken Flow): Dùng ngôn ngữ nói tự nhiên, hấp dẫn, gãy gọn, giàu cảm xúc, không dịch thô cứng từng chữ.
+3. BẢO TOÀN DANH TỪ RIÊNG: Giữ nguyên tên nhân vật, địa danh, thuật ngữ kỹ thuật.
+
+Chỉ trả về JSON array hợp lệ theo định dạng:
+[
+  {{"id": 1, "translated_text": "câu dịch"}}
+]
+
+Danh sách câu cần dịch:
+{json.dumps(items_to_send, ensure_ascii=False, indent=2)}
+"""
             content = gemini.generate_content(prompt).text.strip()
             content = self._strip_code_fence(content)
             translated_items = json.loads(content)
@@ -206,7 +217,7 @@ class Translator:
                 and self._clean_translation(item.get("translated_text"))
             }
         except Exception as error:
-            print(f"[Translator] Gemini translation error: {error}")
+            print(f"[Translator] VideoLingo Gemini translation error: {error}")
             return {}
 
     @staticmethod
