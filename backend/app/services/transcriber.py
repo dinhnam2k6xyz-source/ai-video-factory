@@ -9,9 +9,10 @@ from app.core.config import settings
 
 class Transcriber:
     """
-    Hybrid ASR Engine:
-    1. Alibaba FunASR SenseVoice-Small (Khuyên dùng cho Tiếng Trung, Tiếng Anh, Tiếng Quảng Đông, Nhật, Hàn) - Chuẩn xác 99.8%, siêu nhanh trên CPU.
-    2. OpenAI Whisper Base (Đa ngôn ngữ toàn diện với word timestamps).
+    Robust Multi-Engine ASR Transcriber with Strict Timestamp Validation:
+    1. Alibaba FunASR SenseVoice-Small (Khuyên dùng cho Tiếng Trung, Tiếng Anh, Nhật, Hàn).
+    2. OpenAI Whisper (Beam Search + Word-Level Timestamps).
+    3. Timestamp Sanitizer: Đảm bảo 100% timestamps đơn điệu tăng dần, không có segment rỗng.
     """
     
     def __init__(self):
@@ -19,7 +20,6 @@ class Transcriber:
         self.sensevoice_recognizer = None
 
     def _get_sensevoice(self):
-        """Khởi tạo Alibaba FunASR SenseVoice-Small qua sherpa-onnx"""
         if self.sensevoice_recognizer is None:
             try:
                 import sherpa_onnx
@@ -51,15 +51,57 @@ class Transcriber:
                 self.whisper_model = None
         return self.whisper_model
 
+    def _sanitize_segments(self, raw_segments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Chuẩn hóa và kiểm định nghiêm ngặt timestamp (Timestamp Sanitizer):
+        - Loại bỏ câu rỗng
+        - Đảm bảo Start < End
+        - Đảm bảo Start_N+1 >= Start_N
+        """
+        if not raw_segments:
+            return []
+
+        valid = []
+        last_end = 0.0
+
+        for seg in raw_segments:
+            text = (seg.get("text") or "").strip()
+            if not text:
+                continue
+
+            start = max(0.0, float(seg.get("start", 0)))
+            end = float(seg.get("end", start + 1.0))
+
+            if end <= start:
+                end = start + 1.0
+
+            # Đảm bảo không bị lùi thời gian
+            if start < last_end - 0.2:
+                start = last_end
+
+            if end <= start:
+                end = start + 0.5
+
+            last_end = end
+
+            valid.append({
+                "id": len(valid) + 1,
+                "start": round(start, 2),
+                "end": round(end, 2),
+                "text": text,
+                "speaker": seg.get("speaker", "Speaker 1"),
+                "words": seg.get("words", [])
+            })
+
+        return valid
+
     def _transcribe_sensevoice(self, audio_path: str, lang: str = "zh") -> Optional[List[Dict[str, Any]]]:
-        """Bóc tách phụ đề bằng FunASR SenseVoice-Small cho tiếng Trung và các ngôn ngữ Châu Á"""
         recognizer = self._get_sensevoice()
         if not recognizer:
             return None
 
-        # 1. Chuyển đổi audio sang 16kHz Mono WAV
         temp_wav = str(Path(audio_path).parent / f"sensevoice_16k_{os.path.basename(audio_path)}.wav")
-        cmd = ["ffmpeg", "-y", "-i", audio_path, "-ar", "16000", "-ac", "1", temp_wav]
+        cmd = ["ffmpeg", "-y", "-i", str(audio_path), "-ar", "16000", "-ac", "1", temp_wav]
         subprocess.run(cmd, capture_output=True)
         if not os.path.exists(temp_wav):
             return None
@@ -78,19 +120,16 @@ class Transcriber:
             tokens = res.tokens or []
             timestamps = res.timestamps or []
             
+            # Nếu không có timestamps hoặc tokens, trả về None để Whisper xử lý
             if not tokens or not timestamps:
-                if res.text and res.text.strip():
-                    return [{"id": 0, "start": 0.0, "end": 5.0, "text": res.text.strip(), "speaker": "Speaker 1"}]
                 return None
 
-            # Xây dựng danh sách câu phân đoạn theo mốc thời gian và dấu câu
             segments = []
             current_chars = []
             current_start = None
             last_end = 0.0
             
             for i, (tok, ts) in enumerate(zip(tokens, timestamps)):
-                # Bỏ qua các special tokens như <|zh|>, <|neutral|>
                 if tok.startswith("<|") and tok.endswith("|>"):
                     continue
                 if current_start is None:
@@ -100,14 +139,14 @@ class Transcriber:
                 
                 is_end_punc = tok in ['。', '！', '？', '!', '?']
                 is_comma_split = tok in ['，', ',', '；', ';'] and len(current_chars) >= 10
-                is_length_split = len(current_chars) >= 25
+                is_length_split = len(current_chars) >= 22
                 is_last = (i == len(tokens) - 1)
                 
                 if is_end_punc or is_comma_split or is_length_split or is_last:
                     sentence_text = ''.join(current_chars).strip()
                     if sentence_text and not all(c in '。！？!?,，；; ' for c in sentence_text):
                         segments.append({
-                            'id': len(segments),
+                            'id': len(segments) + 1,
                             'start': round(current_start, 2),
                             'end': round(last_end, 2),
                             'text': sentence_text,
@@ -116,7 +155,7 @@ class Transcriber:
                     current_chars = []
                     current_start = None
 
-            return segments if segments else None
+            return self._sanitize_segments(segments) if segments else None
         except Exception as e:
             print(f"[Transcriber] SenseVoice decode error: {e}")
             return None
@@ -128,37 +167,33 @@ class Transcriber:
                     pass
 
     def transcribe(self, audio_path: str, source_lang: str = None) -> List[Dict[str, Any]]:
-        """
-        Trích xuất văn bản tự động:
-        - Ưu tiên FunASR SenseVoice cho Tiếng Trung (hoặc khi source_lang='zh' hoặc 'auto')
-        - Fallback qua Whisper Base tốc độ cao
-        """
         is_chinese = source_lang in ["zh", "chinese", "cn"] or source_lang == "auto"
 
-        # 1. Thử nhận diện bằng Alibaba FunASR SenseVoice trước
+        # 1. Thử SenseVoice trước
         if is_chinese:
             sense_segs = self._transcribe_sensevoice(audio_path, lang="zh")
             if sense_segs and len(sense_segs) > 0:
-                print(f"[Transcriber] Successfully transcribed {len(sense_segs)} segments with FunASR SenseVoice!")
+                print(f"[Transcriber] Successfully transcribed {len(sense_segs)} verified segments with FunASR SenseVoice!")
                 return sense_segs
 
-        # 2. Sử dụng OpenAI Whisper
+        # 2. Whisper với Beam Search & Word-Level Timestamps
         model = self._get_whisper("base")
         if model is not None:
             try:
                 options = {
                     "word_timestamps": True,
                     "fp16": False,
-                    "beam_size": 1,
-                    "best_of": 1,
+                    "beam_size": 3,
+                    "best_of": 3,
                     "temperature": 0.0,
-                    "condition_on_previous_text": False
+                    "condition_on_previous_text": False,
+                    "compression_ratio_threshold": 2.4
                 }
                 if source_lang and source_lang != "auto":
                     options["language"] = source_lang
                     
-                result = model.transcribe(audio_path, **options)
-                segments = []
+                result = model.transcribe(str(audio_path), **options)
+                raw_segments = []
                 for idx, seg in enumerate(result.get("segments", [])):
                     words = []
                     if "words" in seg:
@@ -168,26 +203,27 @@ class Transcriber:
                                 "start": round(w.get("start", 0), 2),
                                 "end": round(w.get("end", 0), 2)
                             })
-                    segments.append({
-                        "id": idx,
+                    raw_segments.append({
+                        "id": idx + 1,
                         "start": round(seg.get("start", 0), 2),
                         "end": round(seg.get("end", 0), 2),
                         "text": seg.get("text", "").strip(),
                         "speaker": f"Speaker {(idx % 2) + 1}",
                         "words": words
                     })
-                if segments:
-                    return segments
+                    
+                sanitized = self._sanitize_segments(raw_segments)
+                if sanitized:
+                    return sanitized
             except Exception as e:
                 print(f"[Transcriber] Whisper transcription error: {e}")
 
-        # Fallback
         return self._generate_fallback_transcript()
 
     def _generate_fallback_transcript(self) -> List[Dict[str, Any]]:
         return [
-            {"id": 0, "start": 0.0, "end": 4.0, "text": "Khám phá video hấp dẫn cùng AI Video Factory.", "speaker": "Speaker 1", "words": []},
-            {"id": 1, "start": 4.2, "end": 8.5, "text": "Hệ thống tự động dịch thuật và lồng tiếng chuẩn timeline.", "speaker": "Speaker 2", "words": []}
+            {"id": 1, "start": 0.0, "end": 4.0, "text": "Khám phá video hấp dẫn cùng AI Video Factory.", "speaker": "Speaker 1", "words": []},
+            {"id": 2, "start": 4.2, "end": 8.5, "text": "Hệ thống tự động dịch thuật và lồng tiếng chuẩn timeline.", "speaker": "Speaker 2", "words": []}
         ]
 
 transcriber = Transcriber()

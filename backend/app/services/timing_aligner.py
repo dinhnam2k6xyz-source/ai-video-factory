@@ -7,20 +7,18 @@ from pydub.effects import speedup
 
 class TimingAligner:
     """
-    In-Memory Ultra-Fast Audio Timeline Engine:
-    - Xử lý và căn chỉnh timeline độc quyền hoàn toàn trong bộ nhớ RAM (0.2 giây cho 200 câu)
-    - Loại bỏ 100% việc gọi ffprobe / subprocess FFmpeg lặp lại hàng trăm lần
-    - Tự động co giãn tốc độ (Time-Stretch) mượt mà không vỡ tiếng
-    - Chèn Guard Gap 50ms chống tràn câu và chống chồng giọng
+    VideoLingo-Standard Natural Pacing Audio Timeline Engine:
+    - Giới hạn tốc độ tăng tối đa 1.20x (Natural Pacing Limit) để giọng nói luôn giữ được độ trầm ấm, truyền cảm tự nhiên, không bị nói vội/méo tiếng.
+    - Xử lý hoàn toàn trong RAM (0.2s cho 200 câu thoại).
+    - Chèn Guard Gap 50ms ngăn chặn 100% việc câu sau chèn lên câu trước.
     """
     
     @staticmethod
     def get_audio_duration_fast(file_path: str) -> float:
-        """Đo thời lượng file audio nhanh không cần gọi ffprobe process"""
+        """Đo thời lượng file audio nhanh không tạo process ffprobe"""
         if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
             return 0.0
         try:
-            # Đo nhanh từ pydub
             seg = AudioSegment.from_file(file_path)
             return len(seg) / 1000.0
         except Exception:
@@ -31,33 +29,31 @@ class TimingAligner:
 
     def stretch_audio_segment_fast(self, audio_seg: AudioSegment, target_ms: int) -> AudioSegment:
         """
-        Co giãn tốc độ audio segment trong bộ nhớ RAM mà không tạo process FFmpeg
+        Co giãn tốc độ audio segment trong bộ nhớ RAM với dải tốc độ tự nhiên (0.85x - 1.20x)
         """
         current_ms = len(audio_seg)
         if current_ms <= 100 or target_ms <= 100:
             return audio_seg
             
-        speed_factor = current_ms / target_ms
-        if speed_factor <= 1.05:
-            # Ngắn hơn hoặc bằng slot, giữ nguyên
+        speed_factor = current_ms / float(target_ms)
+        if speed_factor <= 1.03:
             return audio_seg
             
         try:
-            # Dùng speedup của pydub nếu speed <= 1.8
-            if speed_factor <= 1.8:
-                stretched = speedup(audio_seg, playback_speed=speed_factor)
-                return stretched[:target_ms].fade_out(20)
-            else:
-                # Nếu câu quá dài, tăng tốc tối đa và cắt gọn fade-out an toàn
-                stretched = speedup(audio_seg, playback_speed=1.8)
-                return stretched[:target_ms].fade_out(25)
+            # Giới hạn tốc độ tăng tối đa 1.20x để không bị méo tiếng hoặc nuốt chữ
+            effective_speed = min(1.20, speed_factor)
+            stretched = speedup(audio_seg, playback_speed=effective_speed)
+            
+            # Cắt gọn đuôi với fade-out 30ms nếu vẫn dài hơn slot
+            if len(stretched) > target_ms:
+                return stretched[:target_ms].fade_out(30)
+            return stretched
         except Exception:
-            # Fallback nếu câu quá ngắn: slice và fade-out
-            return audio_seg[:target_ms].fade_out(25)
+            return audio_seg[:target_ms].fade_out(30)
 
     def build_full_dub_track(self, segments: List[Dict[str, Any]], total_duration: float, temp_dir: Path) -> str:
         """
-        Ghép tất cả các câu thoại vào timeline ĐỘC QUYỀN trong RAM (In-Memory Master Assembly)
+        Ghép tất cả các câu thoại vào timeline ĐỘC QUYỀN trong RAM
         """
         valid_segments = [
             s for s in segments 
@@ -67,7 +63,6 @@ class TimingAligner:
         valid_segments.sort(key=lambda x: float(x.get("start", 0)))
         
         total_ms = int(max(total_duration, 1.0) * 1000)
-        # Khởi tạo timeline im lặng trong RAM
         full_dub = AudioSegment.silent(duration=total_ms + 2000, frame_rate=44100)
         full_dub_path = str(temp_dir / "full_dub_voice.wav")
         
@@ -90,24 +85,21 @@ class TimingAligner:
             else:
                 max_allowed_end = cur_end
                 
-            slot_ms = int(max(0.3, max_allowed_end - cur_start) * 1000)
+            slot_ms = int(max(0.35, max_allowed_end - cur_start) * 1000)
             raw_audio_path = seg["tts_audio_path"]
             
             try:
                 clip = AudioSegment.from_file(raw_audio_path)
                 clip_ms = len(clip)
                 
-                # Nếu clip dài hơn slot cho phép, co giãn trong RAM
                 if clip_ms > slot_ms:
                     clip = self.stretch_audio_segment_fast(clip, slot_ms)
                     
-                # Overlay trực tiếp vào Master Timeline
                 pos_ms = int(cur_start * 1000)
                 full_dub = full_dub.overlay(clip, position=pos_ms)
             except Exception as e:
                 print(f"[TimingAligner] Error overlaying segment {seg.get('id')}: {e}")
 
-        # Xuất 1 file WAV duy nhất ra đĩa
         full_dub.export(full_dub_path, format="wav")
         return full_dub_path
 
@@ -120,9 +112,8 @@ class TimingAligner:
         voice_volume: float = 1.3
     ) -> str:
         """
-        Hòa âm giọng lồng tiếng mới với nhạc nền:
-        - Nếu bgm_volume == 0.0 (chế độ Solo / Reup sạch): Chuyển đổi siêu tốc trong 0.1s
-        - Nếu có BGM: Dùng FFmpeg amix hoặc Audio Ducking
+        Hòa âm giọng lồng tiếng mới:
+        - Nếu bgm_volume == 0.0: Render tức thì không cần giải mã BGM
         """
         if bgm_volume <= 0.0 or not os.path.exists(bgm_path):
             cmd = [

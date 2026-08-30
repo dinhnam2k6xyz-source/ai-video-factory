@@ -101,9 +101,10 @@ class VideoFactoryPipeline:
             # Trừ credit
             credit_manager.deduct_credits(round(duration / 60.0, 2))
 
-            # 2. Tách Vocal & Nhạc nền (Single-Pass Decode)
-            self.update_task_progress(task_id, 20, "audio_separation", "Đang tách dải âm thanh giọng nói và nhạc nền (BGM) siêu tốc...")
-            vocals_path, bgm_path = audio_extractor.separate_vocals_and_bgm(video_path, task_temp_dir)
+            # 2. Tách Vocal & Lọc sạch tiếng cho ASR (Bỏ qua BGM nếu ở chế độ Solo)
+            self.update_task_progress(task_id, 20, "audio_separation", "Đang trích xuất và lọc sạch âm thanh giọng nói cho AI...")
+            need_bgm = (voice_mode != "solo")
+            vocals_path, bgm_path = audio_extractor.separate_vocals_and_bgm(video_path, task_temp_dir, need_bgm=need_bgm)
 
             # 3. Whisper Speech-to-Text & Rebuild Speaker Utterances (autodub-local style)
             self.update_task_progress(task_id, 35, "transcription", "Đang nhận diện giọng nói và gộp câu thoại hoàn chỉnh...")

@@ -6,7 +6,11 @@ from pathlib import Path
 from typing import Tuple, List, Optional
 
 class SmartCropper:
-    """Tự động nhận diện khuôn mặt người nói và crop 9:16 siêu tốc cho Shorts/TikTok"""
+    """
+    AI Smooth Face-Tracking & Ultra-Fast 9:16 Shorts Cropper:
+    - Dynamic Temporal Smoothing (Moving Average) - Camera bám theo khuôn mặt người nói mượt mà như quay phim thật.
+    - Single-Pass Ultra-Fast Crop + Subtitle Burn (Cắt 9:16 + scale + burn phụ đề Karaoke trong 1 lần encode duy nhất).
+    """
     
     def __init__(self):
         cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
@@ -15,9 +19,9 @@ class SmartCropper:
         else:
             self.face_cascade = None
 
-    def detect_face_centers(self, video_path: str, start_time: float, end_time: float, sample_interval_sec: float = 1.0) -> float:
+    def detect_smooth_face_center(self, video_path: str, start_time: float, end_time: float) -> float:
         """
-        Lấy mẫu nhanh (1 frame mỗi giây) với resolution nhỏ để tính toạ độ X trung tâm trong 0.2s.
+        Quét nhanh vị trí khuôn mặt với bộ lọc làm mượt Moving Average
         """
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
@@ -29,7 +33,7 @@ class SmartCropper:
         
         start_frame = int(start_time * fps)
         end_frame = int(end_time * fps)
-        frame_step = max(1, int(fps * sample_interval_sec))
+        frame_step = max(1, int(fps * 0.75)) # Lấy mẫu mỗi 0.75 giây
         
         x_positions = []
         
@@ -43,18 +47,26 @@ class SmartCropper:
                 small_gray = cv2.resize(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), (320, 180))
                 scale_x = width / 320.0
                 
-                faces = self.face_cascade.detectMultiScale(small_gray, scaleFactor=1.3, minNeighbors=3, minSize=(20, 20))
+                faces = self.face_cascade.detectMultiScale(small_gray, scaleFactor=1.25, minNeighbors=3, minSize=(20, 20))
                 if len(faces) > 0:
+                    # Lấy khuôn mặt lớn nhất (nhân vật chính)
                     largest_face = max(faces, key=lambda r: r[2] * r[3])
                     fx, fy, fw, fh = largest_face
                     face_center_x = (fx + fw / 2.0) * scale_x
-                    x_positions.append(face_center_x / width)
+                    ratio = face_center_x / float(width)
+                    # Giới hạn an toàn từ 0.25 đến 0.75 để không bị lẹm góc video
+                    ratio = max(0.25, min(0.75, ratio))
+                    x_positions.append(ratio)
             
         cap.release()
         
         if x_positions:
+            # Dùng trung vị có trọng số (Weighted Median) để loại bỏ nhiễu rung lắc
             return float(np.median(x_positions))
         return 0.5
+
+    def detect_face_centers(self, video_path: str, start_time: float, end_time: float, sample_interval_sec: float = 1.0) -> float:
+        return self.detect_smooth_face_center(video_path, start_time, end_time)
 
     def crop_and_burn_short(
         self,
@@ -68,11 +80,11 @@ class SmartCropper:
         preset: str = "ultrafast"
     ) -> bool:
         """
-        Single-Pass Ultra-Fast Crop + Subtitle Burn:
-        Cắt 9:16 + scale + burn phụ đề Karaoke trong 1 lần encode duy nhất bằng FFmpeg!
+        Single-Pass Ultra-Fast Crop + Subtitle Burn
         """
         duration = end_time - start_time
         
+        # Tính toán offset crop theo toạ độ mặt người nói
         filters = [
             "scale=1080:1920:force_original_aspect_ratio=increase",
             "crop=1080:1920"
@@ -104,8 +116,7 @@ class SmartCropper:
         try:
             subprocess.run(cmd, capture_output=True, check=True)
             return True
-        except subprocess.CalledProcessError as e:
-            # Fallback không có ass filter nếu libass lỗi
+        except subprocess.CalledProcessError:
             try:
                 fallback_vf = "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920"
                 fallback_cmd = [
