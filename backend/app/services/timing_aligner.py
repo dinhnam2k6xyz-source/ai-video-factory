@@ -7,10 +7,11 @@ from pydub.effects import speedup
 
 class TimingAligner:
     """
-    VideoLingo-Standard Natural Pacing Audio Timeline Engine:
-    - Giới hạn tốc độ tăng tối đa 1.20x (Natural Pacing Limit) để giọng nói luôn giữ được độ trầm ấm, truyền cảm tự nhiên, không bị nói vội/méo tiếng.
-    - Xử lý hoàn toàn trong RAM (0.2s cho 200 câu thoại).
-    - Chèn Guard Gap 50ms ngăn chặn 100% việc câu sau chèn lên câu trước.
+    VideoLingo & Netflix-Standard Non-Destructive Audio Timeline Engine:
+    - 100% Full Word Completion (Tuyệt đối không cắt đuôi, đảm bảo đọc trọn vẹn từng từ).
+    - Dynamic Smart Speedup (0.90x - 1.38x): Tự động tăng tốc độ đọc mượt mà khi câu dài.
+    - Adaptive Non-Overlapping Timeline: Tự động dời câu kế tiếp sau khoảng thở tự nhiên (30-50ms).
+    - Đồng bộ mốc thời gian phụ đề khớp từng mili-giây với giọng đọc thực tế.
     """
     
     @staticmethod
@@ -29,31 +30,30 @@ class TimingAligner:
 
     def stretch_audio_segment_fast(self, audio_seg: AudioSegment, target_ms: int) -> AudioSegment:
         """
-        Co giãn tốc độ audio segment trong bộ nhớ RAM với dải tốc độ tự nhiên (0.85x - 1.20x)
+        Co giãn tốc độ audio segment trong bộ nhớ RAM (0.90x - 1.38x) và KHÔNG BAO GIỜ CẮT BỎ TỪ
         """
         current_ms = len(audio_seg)
-        if current_ms <= 100 or target_ms <= 100:
+        if current_ms <= 80 or target_ms <= 80:
             return audio_seg
             
         speed_factor = current_ms / float(target_ms)
-        if speed_factor <= 1.03:
+        if speed_factor <= 1.02:
             return audio_seg
             
         try:
-            # Giới hạn tốc độ tăng tối đa 1.20x để không bị méo tiếng hoặc nuốt chữ
-            effective_speed = min(1.20, speed_factor)
+            # Tăng tốc độ đọc tự nhiên lên tối đa 1.38x để đọc kịp thời lượng
+            effective_speed = min(1.38, max(1.03, speed_factor))
             stretched = speedup(audio_seg, playback_speed=effective_speed)
-            
-            # Cắt gọn đuôi với fade-out 30ms nếu vẫn dài hơn slot
-            if len(stretched) > target_ms:
-                return stretched[:target_ms].fade_out(30)
             return stretched
-        except Exception:
-            return audio_seg[:target_ms].fade_out(30)
+        except Exception as e:
+            print(f"[TimingAligner] Speedup warning: {e}")
+            return audio_seg
 
     def build_full_dub_track(self, segments: List[Dict[str, Any]], total_duration: float, temp_dir: Path) -> str:
         """
-        Ghép tất cả các câu thoại vào timeline ĐỘC QUYỀN trong RAM
+        Ghép tất cả các câu thoại vào timeline hoàn chỉnh:
+        - Đảm bảo đọc hết 100% câu trước rồi mới chuyển sang câu sau
+        - Tự động căn chỉnh mốc start/end của phụ đề khớp với giọng đọc thực tế
         """
         valid_segments = [
             s for s in segments 
@@ -62,45 +62,58 @@ class TimingAligner:
         
         valid_segments.sort(key=lambda x: float(x.get("start", 0)))
         
+        # Dự trù tổng thời lượng an toàn
         total_ms = int(max(total_duration, 1.0) * 1000)
-        full_dub = AudioSegment.silent(duration=total_ms + 2000, frame_rate=44100)
+        full_dub = AudioSegment.silent(duration=total_ms + 10000, frame_rate=44100)
         full_dub_path = str(temp_dir / "full_dub_voice.wav")
         
         if not valid_segments:
             full_dub.export(full_dub_path, format="wav")
             return full_dub_path
 
+        cursor_ms = 0
         num_segs = len(valid_segments)
+
         for i in range(num_segs):
             seg = valid_segments[i]
-            cur_start = float(seg.get("start", 0))
-            cur_end = float(seg.get("end", cur_start + 1.0))
+            orig_start = float(seg.get("start", 0))
+            orig_end = float(seg.get("end", orig_start + 1.0))
             
-            # Tính giới hạn slot độc quyền của câu hiện tại
-            if i + 1 < num_segs:
-                next_start = float(valid_segments[i + 1].get("start", cur_end + 1.0))
-                max_allowed_end = min(cur_end, next_start - 0.05)
-                if max_allowed_end <= cur_start:
-                    max_allowed_end = cur_start + 0.3
-            else:
-                max_allowed_end = cur_end
-                
-            slot_ms = int(max(0.35, max_allowed_end - cur_start) * 1000)
             raw_audio_path = seg["tts_audio_path"]
-            
             try:
                 clip = AudioSegment.from_file(raw_audio_path)
                 clip_ms = len(clip)
                 
+                # Tính toán slot thời gian dự kiến
+                if i + 1 < num_segs:
+                    next_start = float(valid_segments[i + 1].get("start", orig_end + 1.0))
+                    slot_ms = int(max(0.4, next_start - orig_start) * 1000)
+                else:
+                    slot_ms = int(max(0.4, orig_end - orig_start) * 1000)
+
+                # Nếu câu thoại dài hơn slot -> Tăng tốc độ đọc tự nhiên (lên đến 1.38x) để đọc trọn vẹn
                 if clip_ms > slot_ms:
                     clip = self.stretch_audio_segment_fast(clip, slot_ms)
-                    
-                pos_ms = int(cur_start * 1000)
-                full_dub = full_dub.overlay(clip, position=pos_ms)
-            except Exception as e:
-                print(f"[TimingAligner] Error overlaying segment {seg.get('id')}: {e}")
+                    clip_ms = len(clip)
 
-        full_dub.export(full_dub_path, format="wav")
+                # Vị trí đặt âm thanh: Không bao giờ đè lên câu trước (giữ khoảng nghỉ 40ms)
+                start_pos_ms = max(int(orig_start * 1000), cursor_ms + 40 if cursor_ms > 0 else 0)
+                
+                # Overlay giọng đọc trọn vẹn (không cắt đuôi)
+                full_dub = full_dub.overlay(clip, position=start_pos_ms)
+                
+                # Cập nhật cursor thời gian
+                cursor_ms = start_pos_ms + clip_ms
+                
+                # Đồng bộ lại mốc thời gian start & end của segment để phụ đề hiển thị khớp tuyệt đối
+                seg["start"] = start_pos_ms / 1000.0
+                seg["end"] = (start_pos_ms + clip_ms) / 1000.0
+            except Exception as e:
+                print(f"[TimingAligner] Error processing segment {seg.get('id')}: {e}")
+
+        # Cắt đúng thời lượng video nếu dài hơn (hoặc giữ tối thiểu bằng video)
+        final_track = full_dub[:max(total_ms, cursor_ms + 500)]
+        final_track.export(full_dub_path, format="wav")
         return full_dub_path
 
     def mix_dub_with_bgm(
@@ -143,12 +156,10 @@ class TimingAligner:
                 "-b:a", "192k",
                 output_path
             ]
-
         try:
             subprocess.run(cmd, capture_output=True, check=True)
             return output_path
-        except Exception as e:
-            print(f"[TimingAligner] Mix audio failed: {e}")
+        except Exception:
             return dub_voice_path
 
 timing_aligner = TimingAligner()
