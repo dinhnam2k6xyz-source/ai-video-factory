@@ -6,12 +6,12 @@ from typing import List, Dict, Any, Optional
 
 class SubtitleGenerator:
     """
-    VideoLingo & Video-Subtitle-Remover Hybrid Subtitle Engine:
-    - Robust Windows-safe libass filter path resolution (ass=filename='...').
-    - Smart Subtitle Masking (Làm mờ phụ đề gốc bằng Gaussian Blur gblur).
-    - Netflix-Standard Subtitle Layout (Tự động ngắt 2 dòng cân đối, tối đa 38 ký tự/dòng).
+    VideoLingo & Netflix-Standard Cinema Subtitle Engine:
+    - Single standard font (Arial) for 100% universal libass compatibility on Windows/Linux/Mac.
+    - Netflix-Standard 2-Line Subtitle Balance (Tối đa 38 ký tự/dòng).
+    - Cinema Subtitles (Chữ Vàng/Trắng nổi bật, viền đen sắc nét 3.5px).
     - Dynamic Karaoke Word-by-Word Animated Highlight (TikTok / Shorts 9:16).
-    - Cinema Film Subtitles (Phụ đề điện ảnh nổi bật, viền đen sắc nét).
+    - Safe Windows libass filter path (ass=filename='...').
     """
 
     def format_timestamp_ass(self, seconds: float) -> str:
@@ -68,7 +68,6 @@ class SubtitleGenerator:
 
     @staticmethod
     def get_safe_ass_filter_path(ass_path: str) -> str:
-        """Chuyển đổi đường dẫn ASS sang dạng an toàn 100% cho FFmpeg trên Windows"""
         try:
             rel = os.path.relpath(ass_path).replace("\\", "/")
             return f"ass=filename='{rel}'"
@@ -80,15 +79,15 @@ class SubtitleGenerator:
         self,
         segments: List[Dict[str, Any]],
         output_ass_path: str,
-        is_vertical: bool = True,
+        is_vertical: bool = False,
         offset_start: float = 0.0,
         style_mode: str = "cinema"
     ) -> str:
         play_res_x = 1080 if is_vertical else 1920
         play_res_y = 1920 if is_vertical else 1080
-        font_size = 40 if is_vertical else 28
-        margin_v = 240 if is_vertical else 42
-        font_name = "Segoe UI, Arial, Tahoma, sans-serif"
+        font_size = 56 if is_vertical else 52
+        margin_v = 320 if is_vertical else 75
+        font_name = "Arial"
 
         ass_header = f"""[Script Info]
 Title: AI Video Factory Subtitles
@@ -101,9 +100,9 @@ PlayResY: {play_res_y}
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: TikTokKaraoke,{font_name},{font_size},&H0000FFFF,&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,4.0,2.0,2,30,30,{margin_v},1
-Style: CinemaStyle,{font_name},{font_size},&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3.2,1.8,2,40,40,{margin_v},1
-Style: BilingualTop,{font_name},{font_size},&H0000FFFF,&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3.5,1.5,2,30,30,{margin_v + 35},1
-Style: BilingualBottom,{font_name},{int(font_size * 0.75)},&H00E0E0E0,&H00FFFFFF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2.0,1.0,2,30,30,{margin_v},1
+Style: CinemaStyle,{font_name},{font_size},&H0000FFFF,&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3.8,2.0,2,40,40,{margin_v},1
+Style: BilingualTop,{font_name},{font_size},&H0000FFFF,&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3.8,2.0,2,30,30,{margin_v + 50},1
+Style: BilingualBottom,{font_name},{int(font_size * 0.75)},&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2.5,1.0,2,30,30,{margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text

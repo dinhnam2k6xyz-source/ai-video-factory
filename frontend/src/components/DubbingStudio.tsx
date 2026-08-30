@@ -180,16 +180,29 @@ export const DubbingStudio: React.FC<DubbingStudioProps> = ({ task }) => {
               <Sparkles className="w-4 h-4 text-purple-400" />
               Video Hoàn Chỉnh Đã Lồng Tiếng Việt & Căn Timing
             </h3>
-            {fullVideoUrl && (
-              <a
-                href={fullVideoUrl}
-                download="full_dubbed_video.mp4"
-                className="flex items-center gap-1.5 text-xs bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 px-3 py-1.5 rounded-lg transition-colors font-semibold"
-              >
-                <Download className="w-3.5 h-3.5" />
-                Tải Video Full (1080p)
-              </a>
-            )}
+            {/* Top Download Actions */}
+            <div className="flex items-center gap-2">
+              {fullVideoUrl && (
+                <a
+                  href={fullVideoUrl}
+                  download={`full_dubbed_video_${task.task_id}.mp4`}
+                  className="flex items-center gap-1.5 text-xs bg-purple-600/25 hover:bg-purple-600/40 text-purple-200 border border-purple-500/40 px-3 py-1.5 rounded-lg transition-all font-bold shadow-sm"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Tải Video Full (1080p)
+                </a>
+              )}
+              {data.zip_download_url && (
+                <a
+                  href={getStorageUrl(data.zip_download_url)}
+                  download={`ai_video_factory_${task.task_id}.zip`}
+                  className="flex items-center gap-1.5 text-xs bg-emerald-600/25 hover:bg-emerald-600/40 text-emerald-200 border border-emerald-500/40 px-3 py-1.5 rounded-lg transition-all font-bold shadow-sm"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Tải Trọn Gói (.ZIP)
+                </a>
+              )}
+            </div>
           </div>
 
           <div className="aspect-video bg-black rounded-xl overflow-hidden border border-slate-800 relative shadow-inner">
@@ -197,6 +210,7 @@ export const DubbingStudio: React.FC<DubbingStudioProps> = ({ task }) => {
               <video
                 key={fullVideoUrl + (redubSuccess ? '_new' : '')}
                 controls
+                playsInline
                 src={fullVideoUrl}
                 className="w-full h-full object-contain"
               />
