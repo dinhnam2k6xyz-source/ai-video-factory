@@ -1,13 +1,12 @@
 services:
   - type: web
-    name: ai-video-factory-api
-    runtime: docker
-    dockerfilePath: ./backend/Dockerfile
-    dockerContext: ./backend
+    name: ai-video-factory
+    env: docker
+    dockerfilePath: ./Dockerfile
     plan: free
     region: singapore
     envVars:
+      - key: GEMINI_API_KEY
+        value: AIzaSyBpG4I7bOSpL3IgSRdlvM0FoEhEISgk4EM
       - key: PORT
         value: 8000
-      - key: GEMINI_API_KEY
-        sync: false
