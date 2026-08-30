@@ -105,6 +105,7 @@ class SmartCropper:
         
         cmd = [
             "ffmpeg", "-y",
+            "-hwaccel", "auto",
             "-threads", "0",
             "-ss", str(start_time),
             "-i", str(video_path),
