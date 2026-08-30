@@ -33,8 +33,9 @@ async def upload_video(request: Request, background_tasks: BackgroundTasks):
 
         task_id = str(uuid.uuid4())[:8]
         filename = getattr(file, "filename", "video.mp4")
-        file_ext = Path(filename).suffix if filename else ".mp4"
-        if not file_ext:
+        raw_ext = Path(filename).suffix if filename else ".mp4"
+        file_ext = raw_ext.lower() if raw_ext else ".mp4"
+        if file_ext not in [".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v", ".flv", ".ts"]:
             file_ext = ".mp4"
             
         save_path = settings.UPLOADS_DIR / f"{task_id}{file_ext}"
@@ -46,6 +47,8 @@ async def upload_video(request: Request, background_tasks: BackgroundTasks):
             elif hasattr(file, "read"):
                 content = await file.read()
                 buffer.write(content)
+                
+        print(f"[Upload] Received video from client: {filename}, task_id: {task_id}, size: {os.path.getsize(save_path)} bytes")
             
         target_lang = str(form.get("target_lang") or "vi")
         source_lang = str(form.get("source_lang") or "auto")

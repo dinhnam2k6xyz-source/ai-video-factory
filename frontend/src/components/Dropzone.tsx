@@ -85,9 +85,7 @@ export const Dropzone: React.FC<DropzoneProps> = ({ onStartProcessing, isLoading
     setDragOver(false);
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const file = e.dataTransfer.files[0];
-      if (file.type.startsWith('video/')) {
-        setSelectedFile(file);
-      }
+      setSelectedFile(file);
     }
   };
 
@@ -133,7 +131,7 @@ export const Dropzone: React.FC<DropzoneProps> = ({ onStartProcessing, isLoading
               }`}
             >
               <Upload className="w-4 h-4" />
-              Tải Lên Video (MP4 / MKV)
+              Tải Lên Video (MP4 / MOV)
             </button>
 
             <button
@@ -175,7 +173,7 @@ export const Dropzone: React.FC<DropzoneProps> = ({ onStartProcessing, isLoading
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="video/*"
+                accept="video/*,.mp4,.mov,.mkv,.avi,.webm,.m4v,.MOV,.MP4"
                 onChange={handleFileChange}
                 className="hidden"
               />
