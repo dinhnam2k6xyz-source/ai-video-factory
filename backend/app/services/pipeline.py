@@ -104,10 +104,11 @@ class VideoFactoryPipeline:
         voice_mode: str = "solo",
         primary_voice_id: str = "vi-VN-NamMinhNeural_cinema",
         custom_prompt: str = None,
-        speaker_voice_map: Dict[str, str] = None
+        speaker_voice_map: Dict[str, str] = None,
+        device_id: str = "default"
     ) -> Dict[str, Any]:
         """
-        Chạy toàn bộ pipeline xử lý video tự động V2
+        Chạy toàn bộ pipeline xử lý video tự động V2 với Multi-Tenant Device Isolation
         """
         self.auto_cleanup_storage()
         task_temp_dir = settings.TEMP_DIR / task_id
@@ -117,6 +118,7 @@ class VideoFactoryPipeline:
 
         self.active_tasks[task_id] = {
             "task_id": task_id,
+            "device_id": device_id,
             "status": "processing",
             "progress": 5,
             "stage": "init",
@@ -130,8 +132,8 @@ class VideoFactoryPipeline:
             media_info = audio_extractor.get_media_info(video_path)
             duration = media_info.get("duration", 60.0)
             
-            # Trừ credit
-            credit_manager.deduct_credits(round(duration / 60.0, 2))
+            # Trừ credit riêng cho từng thiết bị
+            credit_manager.deduct_credits(round(duration / 60.0, 2), device_id=device_id)
 
             # 2. Tách Vocal & Lọc sạch tiếng cho ASR (Bỏ qua BGM nếu ở chế độ Solo)
             self.update_task_progress(task_id, 20, "audio_separation", "Đang trích xuất và lọc sạch âm thanh giọng nói cho AI...")
@@ -290,7 +292,7 @@ class VideoFactoryPipeline:
                 for res in results:
                     if res:
                         generated_shorts.append(res)
-                        credit_manager.add_shorts_count(1)
+                        credit_manager.add_shorts_count(1, device_id=device_id)
 
             # 9. Xuất file phụ đề SRT / TXT
             srt_vi_path = str(task_out_dir / "subtitles_vi.srt")

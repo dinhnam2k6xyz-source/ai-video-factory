@@ -38,9 +38,15 @@ export const Header: React.FC<HeaderProps> = ({ credits, onOpenPricing, onOpenSe
             <div className="hidden sm:flex items-center gap-3 bg-slate-900/90 border border-slate-800 rounded-xl px-4 py-2">
               <div className="flex items-center gap-2">
                 <Zap className="w-4 h-4 text-amber-400 fill-amber-400 animate-pulse" />
-                <span className="text-xs text-slate-400">Số dư Credit:</span>
+                <span className="text-xs text-slate-400">Hạn Mức Riêng:</span>
                 <span className="text-sm font-bold text-white">
                   {typeof credits.remaining_credits === 'number' ? credits.remaining_credits.toFixed(1) : credits.remaining_credits} phút
+                </span>
+              </div>
+              <div className="h-4 w-[1px] bg-slate-700"></div>
+              <div className="flex items-center gap-1.5" title="Mỗi thiết bị có Cloud & Dung lượng độc lập">
+                <span className="text-xs font-bold text-cyan-400 px-2 py-0.5 rounded-md bg-cyan-500/10 border border-cyan-500/20">
+                  ☁️ Cloud Riêng
                 </span>
               </div>
               <div className="h-4 w-[1px] bg-slate-700"></div>

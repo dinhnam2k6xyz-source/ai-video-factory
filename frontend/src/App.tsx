@@ -11,6 +11,15 @@ import { TaskData, UserCredits } from './types';
 import { Sparkles, Volume2, Scissors, FileText, ArrowLeft, AlertTriangle, RefreshCw } from 'lucide-react';
 import { getApiUrl } from './config';
 
+export function getDeviceId(): string {
+  let id = localStorage.getItem('ai_user_device_id');
+  if (!id) {
+    id = 'dev_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7);
+    localStorage.setItem('ai_user_device_id', id);
+  }
+  return id;
+}
+
 export const App: React.FC = () => {
   const [currentTask, setCurrentTask] = useState<TaskData | null>(null);
   const [activeTab, setActiveTab] = useState<'dubbing' | 'shorts' | 'content'>('dubbing');
@@ -18,11 +27,14 @@ export const App: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [credits, setCredits] = useState<UserCredits | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [deviceId] = useState<string>(getDeviceId());
 
-  // Fetch user credit status on load
+  // Fetch user credit status on load (riêng biệt cho từng thiết bị)
   const fetchCredits = async () => {
     try {
-      const res = await fetch(getApiUrl('/api/credits/status'));
+      const res = await fetch(getApiUrl('/api/credits/status'), {
+        headers: { 'X-Device-Id': getDeviceId() }
+      });
       if (res.ok) {
         const data = await res.json();
         setCredits(data);
@@ -42,7 +54,9 @@ export const App: React.FC = () => {
     if (currentTask && currentTask.status === 'processing' && !currentTask.task_id.startsWith('upload_')) {
       interval = setInterval(async () => {
         try {
-          const res = await fetch(getApiUrl(`/api/video/status/${currentTask.task_id}`));
+          const res = await fetch(getApiUrl(`/api/video/status/${currentTask.task_id}`), {
+            headers: { 'X-Device-Id': getDeviceId() }
+          });
           if (res.ok) {
             const data: TaskData = await res.json();
             setCurrentTask(data);
@@ -119,6 +133,7 @@ export const App: React.FC = () => {
         formData.append('upload_id', uploadId);
         formData.append('chunk_index', String(index));
         formData.append('total_chunks', String(totalChunks));
+        formData.append('device_id', getDeviceId());
         formData.append('filename', file.name);
         formData.append('target_lang', params.targetLang || 'vi');
         formData.append('source_lang', params.sourceLang || 'auto');
@@ -128,6 +143,7 @@ export const App: React.FC = () => {
 
         const res = await fetch(getApiUrl('/api/video/upload-chunk'), {
           method: 'POST',
+          headers: { 'X-Device-Id': getDeviceId() },
           body: formData
         });
 
@@ -196,14 +212,18 @@ export const App: React.FC = () => {
       try {
         const res = await fetch(getApiUrl('/api/video/process-url'), {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'X-Device-Id': getDeviceId()
+          },
           body: JSON.stringify({
             video_url: params.url,
             target_lang: params.targetLang,
             source_lang: params.sourceLang,
             voice_mode: params.voiceMode,
             primary_voice_id: params.primaryVoiceId,
-            custom_prompt: params.customPrompt
+            custom_prompt: params.customPrompt,
+            device_id: getDeviceId()
           })
         });
         const data = await res.json();
@@ -234,7 +254,10 @@ export const App: React.FC = () => {
     try {
       await fetch(getApiUrl('/api/credits/upgrade'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-Device-Id': getDeviceId()
+        },
         body: JSON.stringify({ tier })
       });
       fetchCredits();

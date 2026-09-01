@@ -128,6 +128,7 @@ async def upload_chunk(request: Request, background_tasks: BackgroundTasks):
                     except Exception:
                         pass
             
+            device_id = str(form.get("device_id") or request.headers.get("x-device-id") or "default")
             target_lang = str(form.get("target_lang") or "vi")
             source_lang = str(form.get("source_lang") or "auto")
             voice_mode = str(form.get("voice_mode") or "solo")
@@ -135,7 +136,7 @@ async def upload_chunk(request: Request, background_tasks: BackgroundTasks):
             prompt_val = form.get("custom_prompt")
             custom_prompt = str(prompt_val).strip() if prompt_val and str(prompt_val).strip() else None
 
-            print(f"[TurboUpload] Parallel assembled: {filename}, task_id: {task_id}, size: {os.path.getsize(save_path)} bytes")
+            print(f"[TurboUpload] Parallel assembled: {filename}, task_id: {task_id}, device: {device_id}, size: {os.path.getsize(save_path)} bytes")
 
             background_tasks.add_task(
                 pipeline.run_pipeline,
@@ -145,7 +146,8 @@ async def upload_chunk(request: Request, background_tasks: BackgroundTasks):
                 source_lang=source_lang,
                 voice_mode=voice_mode,
                 primary_voice_id=primary_voice_id,
-                custom_prompt=custom_prompt
+                custom_prompt=custom_prompt,
+                device_id=device_id
             )
 
             return {
@@ -222,6 +224,20 @@ async def get_task_status(task_id: str):
     if status_data.get("status") == "not_found":
         raise HTTPException(status_code=404, detail="Không tìm thấy task_id này")
     return status_data
+
+@router.delete("/purge/{task_id}")
+async def purge_task_storage(task_id: str):
+    """Xóa ngay lập tức file tạm và video thành phẩm trên máy chủ sau khi người dùng đã lưu về máy cá nhân"""
+    try:
+        temp_dir = settings.TEMP_DIR / task_id
+        out_dir = settings.OUTPUTS_DIR / task_id
+        if temp_dir.exists():
+            shutil.rmtree(temp_dir, ignore_errors=True)
+        if out_dir.exists():
+            shutil.rmtree(out_dir, ignore_errors=True)
+        return {"status": "success", "message": f"Đã giải phóng 100% dung lượng máy chủ cho task {task_id}"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 class RedubRequest(BaseModel):
     task_id: str
